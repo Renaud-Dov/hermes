@@ -8,6 +8,11 @@
  * All right reserved.
  */
 
+/*
+ * Copyright (c) 2024.  Dov Devers <renaud-dov.devers@epita.fr>
+ * All right reserved.
+ */
+
 
 create table manager
 (
@@ -154,9 +159,9 @@ create table trace_ticket
     id               uuid not null primary key,
     channel_id       bigint,
     closed_at        timestamp(6) with time zone,
+    created_by bigint,
     created_at       timestamp(6) with time zone,
     guild_id         bigint,
-    taken_at         timestamp(6) with time zone,
     updated_at       timestamp(6) with time zone,
     vocal_channel_id bigint,
     trace_config_id  uuid

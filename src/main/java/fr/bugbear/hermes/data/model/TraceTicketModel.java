@@ -24,10 +24,10 @@ public class TraceTicketModel {
     public Long channelId;
     public Long guildId;
 
+    public Long createdBy;
     public ZonedDateTime createdAt;
     public ZonedDateTime updatedAt;
     public ZonedDateTime closedAt;
-    public ZonedDateTime takenAt;
 
     public Long vocalChannelId;
 
