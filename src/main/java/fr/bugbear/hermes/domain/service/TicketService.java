@@ -284,6 +284,17 @@ public class TicketService implements Logged {
         val ticketId = Long.parseLong(event.getComponentId().split("-")[1]);
         logger().info("Reopening ticket {}", ticketId);
         val ticket = ticketRepository.findByIdOptional(ticketId).orElseThrow();
+        if (ticket.status != TicketModel.Status.CLOSED) {
+            event.getHook().editOriginal("Ticket is not closed").queue();
+            return;
+        }
+
+        // user have 8h since the ticket is closed to reopen it
+        if (ticket.closedAt.plusHours(8).isBefore(ZonedDateTime.now())) {
+            event.getHook().editOriginal("You can't reopen the ticket after 8 hours").queue();
+            return;
+        }
+
         val guild = requireNonNull(event.getJDA().getGuildById(ticket.guildId));
         // retrieve the thread channel
 
@@ -295,6 +306,7 @@ public class TicketService implements Logged {
         ticket.status = TicketModel.Status.IN_PROGRESS;
         ticket.reopenedTimes++;
         ticket.updatedAt = ZonedDateTime.now();
+        ticket.closedAt = null;
 
         val user = requireNonNull(event.getUser());
         event.getHook().editOriginal("Ticket reopened in %s".formatted(threadChannel.getAsMention())).queue();
