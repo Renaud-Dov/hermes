@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 
 import static fr.bugbear.hermes.domain.entity.ButtonEventType.REOPEN_TICKET;
 import static fr.bugbear.hermes.utils.DiscordUtils.copyMessagesToLogChannelThenDelete;
+import static fr.bugbear.hermes.utils.DiscordUtils.extractID;
 import static fr.bugbear.hermes.utils.DiscordUtils.getAllMessages;
 import static fr.bugbear.hermes.utils.DiscordUtils.getOptionAsEnum;
 import static fr.bugbear.hermes.utils.DiscordUtils.getOptionAsString;
@@ -279,9 +280,8 @@ public class TicketService implements Logged {
     }
 
     public void reopenTicket(ButtonInteractionEvent event) {
-        // "reopen_ticket"-<ticketId>
         event.deferReply(true).queue();
-        val ticketId = Long.parseLong(event.getComponentId().split("-")[1]);
+        val ticketId = extractID(REOPEN_TICKET, event.getComponentId()).orElseThrow();
         logger().info("Reopening ticket {}", ticketId);
         val ticket = ticketRepository.findByIdOptional(ticketId).orElseThrow();
         if (ticket.status != TicketModel.Status.CLOSED) {

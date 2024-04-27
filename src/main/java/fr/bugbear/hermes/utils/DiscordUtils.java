@@ -72,4 +72,15 @@ public class DiscordUtils {
         }
         return Optional.empty();
     }
+
+    public static Optional<Long> extractID(String prefix, String text) {
+        val pattern = Pattern.compile("%s-(.+)".formatted(prefix));
+        val matcher = pattern.matcher(text);
+        if (matcher.find()) {
+            return Optional.of(Long.parseLong(matcher.group(1)));
+        }
+        return Optional.empty();
+    }
+
+
 }

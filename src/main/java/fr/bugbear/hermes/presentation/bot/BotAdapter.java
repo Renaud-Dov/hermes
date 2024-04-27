@@ -57,7 +57,7 @@ public class BotAdapter extends ListenerAdapter implements Logged {
     }
 
     private void logEvent(Event event) {
-        logger().info("Event type triggered : {}", event.getClass().getSimpleName());
+        logger().debug("Event type triggered : {}", event.getClass().getSimpleName());
     }
 
     @Override public void onReady(@Nonnull ReadyEvent event) {

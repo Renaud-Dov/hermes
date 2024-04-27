@@ -115,7 +115,7 @@ public class DiscordService implements Logged {
 
     public void onSlashCommand(SlashCommandInteractionEvent event) {
         val commandName = event.getName();
-        logger().info("Slash command : {}", commandName);
+        logger().debug("Slash command : {}", commandName);
         try {
             switch (commandName) {
                 case CLOSE -> ticketService.closeTicket(event);
