@@ -17,6 +17,8 @@ public interface CommandsEventType {
 
     String TRACE = "trace";
 
+    String TRACE_VOCAL = "trace_vocal";
+
     String GOOGLE = "google";
 
     String ASK_TITLE = "ask_title";

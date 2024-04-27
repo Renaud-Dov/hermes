@@ -12,7 +12,6 @@ import fr.bugbear.hermes.data.repository.ForumRepository;
 import fr.bugbear.hermes.data.repository.TicketParticipantRepository;
 import fr.bugbear.hermes.data.repository.TicketRepository;
 import fr.bugbear.hermes.domain.entity.CloseType;
-import fr.bugbear.hermes.utils.EmbedUtils;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -42,11 +41,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static fr.bugbear.hermes.domain.entity.ButtonEventType.REOPEN_TICKET;
-import static fr.bugbear.hermes.utils.DiscordUtils.copyMessagesToLogChannel;
+import static fr.bugbear.hermes.utils.DiscordUtils.copyMessagesToLogChannelThenDelete;
 import static fr.bugbear.hermes.utils.DiscordUtils.getAllMessages;
 import static fr.bugbear.hermes.utils.DiscordUtils.getOptionAsEnum;
 import static fr.bugbear.hermes.utils.DiscordUtils.getOptionAsString;
 import static fr.bugbear.hermes.utils.DiscordUtils.isChannelForumThread;
+import static fr.bugbear.hermes.utils.EmbedUtils.getCloseTicketMessage;
+import static fr.bugbear.hermes.utils.EmbedUtils.getPrivateCloseTicketMessage;
+import static fr.bugbear.hermes.utils.EmbedUtils.getTicketWebhookEmbed;
 import static java.util.Objects.requireNonNull;
 
 @ApplicationScoped
@@ -57,8 +59,6 @@ public class TicketService implements Logged {
     @Inject ForumRepository forumRepository;
     @Inject ForumService forumService;
     @Inject WebhookService webhookService;
-
-    @Inject EmbedUtils embedUtils;
 
     private String getTicketName(Long ticketId, String ticketName) {
         // remove "[ID] - " from the name
@@ -132,7 +132,7 @@ public class TicketService implements Logged {
         // analyze tags
         analyzeTags(threadChannel, threadChannel.getAppliedTags());
 
-        val hookMessage = webhookService.sendEmbed(forum, embedUtils.getTicketWebhookEmbed(ticket, ticketOwner))
+        val hookMessage = webhookService.sendEmbed(forum, getTicketWebhookEmbed(ticket, ticketOwner))
                                         // add link button
                                         .addActionRow(Button.link(threadChannel.getJumpUrl(), "Go to"))
                                         .complete();
@@ -172,7 +172,7 @@ public class TicketService implements Logged {
              .setEphemeral(true)
              .queue();
 
-        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, threadChannel.getOwner())).queue();
+        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, threadChannel.getOwner())).queue();
     }
 
     @Transactional
@@ -207,15 +207,15 @@ public class TicketService implements Logged {
         // TODO: log to webhook channel
         if (typeOption == CloseType.DELETE) {
             // copy all the messages to the webhook channel and delete the ticket
-            copyMessagesToLogChannel(getAllMessages(threadChannel), webhookChannel, threadChannel.getName());
-            threadChannel.delete().reason("Ticket closed").queue();
+            copyMessagesToLogChannelThenDelete(getAllMessages(threadChannel), webhookChannel, threadChannel.getName(),
+                                               threadChannel);
         } else {
             // archive the ticket
 
-            threadChannel.sendMessageEmbeds(embedUtils.getCloseTicketMessage(typeOption,
-                                                                             requireNonNull(event.getMember()),
-                                                                             reasonOption,
-                                                                             managerConfig.get().customMessage)
+            threadChannel.sendMessageEmbeds(getCloseTicketMessage(typeOption,
+                                                                  requireNonNull(event.getMember()),
+                                                                  reasonOption,
+                                                                  managerConfig.get().customMessage)
             ).queue();
             threadChannel.getManager().setArchived(true).setLocked(true).reason("Ticket closed").queue();
 
@@ -235,14 +235,14 @@ public class TicketService implements Logged {
                     add(Button.primary("%s-%d".formatted(REOPEN_TICKET, ticket.id), "Reopen")
                               .withEmoji(Emoji.fromFormatted("U+1F513"))); // represented by a unlock emoji
             }};
-            channel.sendMessageEmbeds(embedUtils.getPrivateCloseTicketMessage(ticket, threadChannel,
-                                                                              typeOption,
-                                                                              member,
-                                                                              reasonOption))
+            channel.sendMessageEmbeds(getPrivateCloseTicketMessage(ticket, threadChannel,
+                                                                   typeOption,
+                                                                   member,
+                                                                   reasonOption))
                    .addActionRow(actionRow)
                    .queue();
         });
-        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, ticketOwner)).queue();
+        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, ticketOwner)).queue();
     }
 
     @Transactional
@@ -315,7 +315,7 @@ public class TicketService implements Logged {
         // remove the button from the message
         event.getMessage().editMessageComponents().queue();
 
-        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, author)).queue();
+        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, author)).queue();
     }
 
     @Transactional
@@ -361,7 +361,7 @@ public class TicketService implements Logged {
             val newTicketName = getTicketName(ticket.id, threadChannel.getName());
             ticket.name = newTicketName;
             threadChannel.getManager().setName(newTicketName).queue();
-            webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, threadChannel.getOwner()))
+            webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, threadChannel.getOwner()))
                           .queue();
         }
     }
@@ -369,7 +369,6 @@ public class TicketService implements Logged {
     @Transactional
     public void onTagsChange(ChannelUpdateAppliedTagsEvent event) {
         val threadChannel = event.getChannel().asThreadChannel();
-        val forumChannel = threadChannel.getParentChannel().asForumChannel();
         val ticketModel = ticketRepository.findByThread(threadChannel);
         if (ticketModel.isEmpty())
             return;
@@ -381,7 +380,7 @@ public class TicketService implements Logged {
 
         // TODO: check for practical tags
         val threadOwner = event.getGuild().retrieveMemberById(threadChannel.getOwnerIdLong()).complete();
-        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, threadOwner)).queue();
+        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, threadOwner)).queue();
     }
 
     public void onTicketArchivedOrLocked(ThreadChannel threadChannel, User user) {

@@ -39,6 +39,7 @@ import static fr.bugbear.hermes.domain.entity.CommandsEventType.GOOGLE;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.LINK;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.RENAME;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.TRACE;
+import static fr.bugbear.hermes.domain.entity.CommandsEventType.TRACE_VOCAL;
 import static fr.bugbear.hermes.domain.entity.ModalEventType.NEW_TRACE_TICKET;
 
 @ApplicationScoped @AllArgsConstructor(onConstructor_ = {@Inject})
@@ -75,6 +76,8 @@ public class DiscordService implements Logged {
         val traceTicket = Commands.slash(TRACE, "Trace ticket")
                                   .addOption(OptionType.STRING, "tag", "Tag category", true);
 
+        val associateVocalToTrace = Commands.slash(TRACE_VOCAL, "Associate a vocal channel to a trace ticket");
+
         val googleCommand = Commands.slash(GOOGLE, "What do you know about `Let me google that for you`?")
                                     .addOption(OptionType.STRING, "query", "The query to search", true)
                                     .addOption(OptionType.STRING, "message", "The message to send", false);
@@ -89,6 +92,7 @@ public class DiscordService implements Logged {
                                              renameTicket,
                                              linkTicket,
                                              traceTicket,
+                                             associateVocalToTrace,
                                              googleCommand,
                                              askTitle)
                                 .queue();
@@ -117,12 +121,15 @@ public class DiscordService implements Logged {
                 case CLOSE -> ticketService.closeTicket(event);
                 case RENAME -> ticketService.renameTicket(event);
                 case TRACE -> traceTicketService.traceTicket(event);
+                case TRACE_VOCAL -> traceTicketService.associateVocalChannel(event);
                 case CLOSE_TRACE -> traceTicketService.closeTraceTicket(event);
                 case ASK_TITLE -> forumService.askForTitle(event);
                 case LINK -> ticketService.linkTicket(event);
                 default -> {
                     logger().warn("Unknown command : {}", commandName);
-                    event.reply("Unknown command, please contact an admin if the issue persists").queue();
+                    event.reply("Unknown command, please contact an admin if the issue persists")
+                         .setEphemeral(true)
+                         .queue();
                 }
             }
         } catch (Exception e) {
@@ -144,13 +151,16 @@ public class DiscordService implements Logged {
                 traceTicketService.onModalTraceTicket(event);
             } else {
                 logger().warn("Unknown modal : {}", modalId);
-                event.reply("Unknown modal, please contact an admin if the issue persists").queue();
+                event.reply("Unknown modal, please contact an admin if the issue persists").setEphemeral(true).queue();
             }
         } catch (Exception e) {
             UUID errorId = UUID.randomUUID();
-            logger().trace("Error ID : {}", errorId, e);
-            event.reply(("An error occurred during the modal execution, please contact an admin with the error ID : "
-                         + "%s").formatted(errorId)).queue();
+            logger().error("Error ID : %s".formatted(errorId), e);
+            event.getHook()
+                 .editOriginal(("An error occurred during the modal execution, please contact an admin with the error"
+                                + " ID : "
+                                + "%s").formatted(errorId))
+                 .queue();
         }
     }
 

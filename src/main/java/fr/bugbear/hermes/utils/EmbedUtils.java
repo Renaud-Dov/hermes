@@ -6,22 +6,26 @@
 package fr.bugbear.hermes.utils;
 
 import fr.bugbear.hermes.data.model.TicketModel;
+import fr.bugbear.hermes.data.model.TraceTicketModel;
 import fr.bugbear.hermes.domain.entity.CloseType;
-import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.annotation.Nullable;
 import lombok.val;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.utils.TimeFormat;
 
 import java.awt.*;
 import java.time.ZonedDateTime;
 
-@ApplicationScoped
 public class EmbedUtils {
 
-    public MessageEmbed getCloseTicketMessage(CloseType type, Member member, String reason, String customMessage) {
+    public static MessageEmbed getCloseTicketMessage(CloseType type,
+                                                     Member member,
+                                                     String reason,
+                                                     String customMessage) {
         if (customMessage == null || customMessage.isEmpty()) {
             customMessage = "Ticket has been closed by an assistant.";
         }
@@ -42,7 +46,7 @@ public class EmbedUtils {
 
     }
 
-    public MessageEmbed getTicketWebhookEmbed(TicketModel ticket, Member author) {
+    public static MessageEmbed getTicketWebhookEmbed(TicketModel ticket, Member author) {
         val status = switch (ticket.status) {
             case OPEN -> ":green_circle: Open";
             case IN_PROGRESS -> ":yellow_circle: In progress";
@@ -66,7 +70,7 @@ public class EmbedUtils {
                 .build();
     }
 
-    public MessageEmbed getPrivateCloseTicketMessage(TicketModel ticket,
+    public static MessageEmbed getPrivateCloseTicketMessage(TicketModel ticket,
                                                      ThreadChannel thread,
                                                      CloseType type,
                                                      Member member,
@@ -107,5 +111,44 @@ public class EmbedUtils {
                 break;
         }
         return embedBuilder.build();
+    }
+
+    public static MessageEmbed newTraceTicketLog(TraceTicketModel traceTicket,
+                                                 TextChannel channel,
+                                                 Member member,
+                                                 String login,
+                                                 @Nullable String reason) {
+        return new EmbedBuilder()
+                .setTitle("New trace ticket")
+                .setDescription(reason == null ? "No reason provided" : reason)
+                .setColor(Color.BLUE)
+                .setAuthor(member.getEffectiveName(), null, member.getUser().getEffectiveAvatarUrl())
+                .addField("Tag", traceTicket.traceConfig.tag, true)
+                .addField("Login", login, true)
+                .addField("Channel", channel.getAsMention(), true)
+                .setTimestamp(ZonedDateTime.now().toInstant())
+                .build();
+    }
+
+    public static MessageEmbed traceTicketRules() {
+        return new EmbedBuilder()
+                .setTitle("Trace ticket rules")
+                .setDescription(
+                        "Tout ce qui est écrit dans ce channel est visible par les assistants, "
+                        + "ainsi que les \n"
+                        + "    modérateurs du serveur. Si vous souhaitez que votre question reste "
+                        + "privée, "
+                        + "merci de ne pas la poser ici.\n"
+                        + "    Le partage de code est autorisé, uniquement sur ce channel. Si vous "
+                        + "souhaitez "
+                        + "partager du code, merci de le mettre \n"
+                        + "    dans un [code block](https://support.discord"
+                        + ".com/hc/fr/articles/210298617) ou "
+                        + "par fichier.\n"
+                        + "    \n"
+                        + "    Cordialement,\n"
+                        + "    L'équipe assistante.")
+                .setColor(Color.GREEN)
+                .build();
     }
 }

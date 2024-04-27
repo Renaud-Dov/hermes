@@ -6,48 +6,86 @@
 package fr.bugbear.hermes.domain.service;
 
 import fr.bugbear.hermes.Logged;
+import fr.bugbear.hermes.data.model.ManagerModel;
+import fr.bugbear.hermes.data.model.TraceTicketModel;
 import fr.bugbear.hermes.data.repository.TraceConfigRepository;
+import fr.bugbear.hermes.data.repository.TraceTicketRepository;
 import jakarta.annotation.Nonnull;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.val;
-import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.Member;
+import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
+import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
 import net.dv8tion.jda.api.interactions.modals.Modal;
 
-import java.awt.*;
+import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
+import static fr.bugbear.hermes.domain.entity.ModalEventType.NEW_TRACE_TICKET;
+import static fr.bugbear.hermes.utils.DiscordUtils.copyMessagesToLogChannelThenDelete;
+import static fr.bugbear.hermes.utils.DiscordUtils.extractUUID;
+import static fr.bugbear.hermes.utils.DiscordUtils.getAllMessages;
 import static fr.bugbear.hermes.utils.DiscordUtils.getOptionAsString;
+import static fr.bugbear.hermes.utils.EmbedUtils.newTraceTicketLog;
+import static fr.bugbear.hermes.utils.EmbedUtils.traceTicketRules;
+import static java.util.Objects.requireNonNull;
+import static net.dv8tion.jda.api.Permission.MESSAGE_HISTORY;
 import static net.dv8tion.jda.api.Permission.MESSAGE_SEND;
 import static net.dv8tion.jda.api.Permission.VIEW_CHANNEL;
+import static net.dv8tion.jda.api.Permission.VOICE_CONNECT;
+import static net.dv8tion.jda.api.Permission.VOICE_SPEAK;
+import static net.dv8tion.jda.api.Permission.VOICE_STREAM;
+import static net.dv8tion.jda.api.Permission.VOICE_USE_EXTERNAL_SOUNDS;
+import static net.dv8tion.jda.api.Permission.VOICE_USE_SOUNDBOARD;
 
 @ApplicationScoped
 public class TraceTicketService implements Logged {
 
     @Inject TraceConfigRepository traceConfigRepository;
+    @Inject TraceTicketRepository traceTicketRepository;
+
+    @Inject WebhookService webhookService;
+
+    public Optional<ManagerModel> getManagerConfig(Member member, TraceTicketModel traceTicket) {
+        val traceConfig = traceTicket.traceConfig;
+
+        return traceConfig.managers.stream()
+                                   .filter(m -> m.users.contains(member.getIdLong()) ||
+                                                m.roles.stream()
+                                                       .anyMatch(role -> member.getRoles()
+                                                                               .stream()
+                                                                               .anyMatch(r -> r.getIdLong()
+                                                                                              == role)))
+                                   .findFirst();
+    }
 
     @Transactional
     public void traceTicket(SlashCommandInteractionEvent event) {
         val tagOption = getOptionAsString(event, "tag").orElseThrow();
         // check that the event was triggered in a thread channel
-        event.deferReply().setEphemeral(true).queue();
-        val tagConfig = traceConfigRepository.findByTag(event.getGuild().getIdLong(), tagOption).orElseThrow();
+        val tagConfigModel = traceConfigRepository.findByTag(requireNonNull(event.getGuild()).getIdLong(),
+                                                             tagOption);
+        if (tagConfigModel.isEmpty()) {
+            event.reply("This tag does not exist").setEphemeral(true).queue();
+            return;
+        }
+        val tagConfig = tagConfigModel.get();
+        val member = requireNonNull(event.getMember());
 
         if (!tagConfig.usersAllowed.contains(event.getUser().getIdLong()) &&
             tagConfig.rolesAllowed.stream()
-                                  .noneMatch(role -> event.getMember()
-                                                          .getRoles()
-                                                          .stream()
-                                                          .anyMatch(r -> r.getIdLong() == role))) {
-            event.reply("You are not allowed to trace tickets with this tag").queue();
+                                  .noneMatch(role -> member.getRoles().stream().anyMatch(r -> r.getIdLong() == role))) {
+            event.reply("You are not allowed to create a trace ticket with this tag.").setEphemeral(true).queue();
+            return;
         }
 
         TextInput login = TextInput.create("login", "Login", TextInputStyle.SHORT)
@@ -61,63 +99,153 @@ public class TraceTicketService implements Logged {
                                       .build();
 
         // trace the ticket
-        Modal modal = Modal.create("trace-create-modal-%s".formatted(tagConfig.id), "Trace ticket")
+        Modal modal = Modal.create("%s-%s".formatted(NEW_TRACE_TICKET, tagConfig.id), "Trace ticket")
                            .addComponents(ActionRow.of(login), ActionRow.of(question)).build();
-
         event.replyModal(modal).queue();
     }
 
+    @Transactional
     public void onModalTraceTicket(@Nonnull ModalInteractionEvent event) {
-        val tagId = UUID.fromString(event.getModalId().split("-")[1]);
-        val login = Objects.requireNonNull(event.getValue("login")).getAsString();
+        // get uuid from the modal id
+        val hasTagId = extractUUID(NEW_TRACE_TICKET, event.getModalId());
+        if (hasTagId.isEmpty()) {
+            logger().error("Could not match the modal id : {}", event.getModalId());
+            event.reply("An error occurred").setEphemeral(true).queue();
+            return;
+        }
+        val tagId = hasTagId.get();
+
+        val login = requireNonNull(event.getValue("login")).getAsString();
         val question = event.getValue("question");
 
         val tagConfig = traceConfigRepository.findByIdOptional(tagId).orElseThrow();
 
         // create channel inside the category of the tag
-        val category = Objects.requireNonNull(Objects.requireNonNull(event.getGuild())
-                                                     .getCategoryById(tagConfig.categoryChannelId));
+        val category = requireNonNull(requireNonNull(event.getGuild())
+                                              .getCategoryById(tagConfig.categoryChannelId));
         val newChannel = event.getGuild()
                               .createTextChannel("trace-%s".formatted(login.replace(".", "_")), category)
                               .addMemberPermissionOverride(event.getUser().getIdLong(),
-                                                           List.of(VIEW_CHANNEL, MESSAGE_SEND),
+                                                           List.of(VIEW_CHANNEL,
+                                                                   MESSAGE_SEND,
+                                                                   MESSAGE_HISTORY),
                                                            List.of())
                               .complete();
         event.reply("New channel created: %s".formatted(newChannel.getAsMention())).setEphemeral(true).queue();
 
-        newChannel.sendMessageEmbeds(
-                          new EmbedBuilder()
-                                  .setTitle("Trace ticket rules")
-                                  .setDescription(
-                                          "Tout ce qui est écrit dans ce channel est visible par les assistants, "
-                                          + "ainsi que les \n"
-                                          + "    modérateurs du serveur. Si vous souhaitez que votre question reste "
-                                          + "privée, "
-                                          + "merci de ne pas la poser ici.\n"
-                                          + "    Le partage de code est autorisé, uniquement sur ce channel. Si vous "
-                                          + "souhaitez "
-                                          + "partager du code, merci de le mettre \n"
-                                          + "    dans un [code block](https://support.discord"
-                                          + ".com/hc/fr/articles/210298617) ou "
-                                          + "par fichier.\n"
-                                          + "    \n"
-                                          + "    Cordialement,\n"
-                                          + "    L'équipe assistante.")
-                                  .setColor(Color.GREEN)
-                                  .build())
-                  .addContent(question != null ? "%s Question: %s".formatted(event.getUser().getAsMention(),
-                                                                             question.getAsString())
-                                               : event.getUser().getAsMention())
+        val traceTicket = new TraceTicketModel()
+                .withId(UUID.randomUUID())
+                .withTraceConfig(tagConfig)
+                .withGuildId(event.getGuild().getIdLong())
+                .withChannelId(newChannel.getIdLong())
+                .withCreatedAt(ZonedDateTime.now())
+                .withCreatedBy(event.getUser().getIdLong());
+
+        traceTicketRepository.persist(traceTicket);
+
+        newChannel.sendMessageEmbeds(traceTicketRules())
+                  .addContent("%s (login: %s)".formatted(event.getUser().getAsMention(), login))
                   .queue();
+        if (question != null && !question.getAsString().isEmpty())
+            newChannel.sendMessage(question.getAsString()).queue();
+
+        val webhookChannel = requireNonNull(event.getGuild().getTextChannelById(tagConfig.webhookChannelId));
+        webhookChannel.sendMessageEmbeds(newTraceTicketLog(traceTicket, newChannel,
+                                                           requireNonNull(event.getMember()), login, requireNonNull(
+                                      question).getAsString()))
+                      .addActionRow(Button.link(newChannel.getJumpUrl(), "Go to"))
+                      .queue();
+        // TODO: send webhook to the trace channel
     }
 
-    public void closeTraceTicket(SlashCommandInteractionEvent event) {
-        // check that the event was triggered in a thread channel
+    @Transactional
+    public void associateVocalChannel(SlashCommandInteractionEvent event) {
+        // check that the event was triggered in a text channel
+        if (event.getChannel().getType() != ChannelType.TEXT) {
+            event.reply("This command must be used in a text channel").setEphemeral(true).queue();
+            return;
+        }
+        val guild = requireNonNull(event.getGuild());
+        val channel = event.getChannel().asTextChannel();
+
         event.deferReply().setEphemeral(true).queue();
 
-        // close the trace ticket
-        event.reply("Trace ticket closed").queue();
+        val traceTicketModel = traceTicketRepository.findByChannel(channel);
+        if (traceTicketModel.isEmpty()) {
+            event.reply("This channel is not a trace ticket").queue();
+            return;
+        }
+        val traceTicket = traceTicketModel.get();
 
-        // TODO: implement the closing of the trace ticket
+        // check if manager
+        if (getManagerConfig(event.getMember(), traceTicket).isEmpty()) {
+            event.getHook().editOriginal("You are not allowed to associate a vocal channel to this trace ticket")
+                 .queue();
+            return;
+        }
+
+        if (traceTicket.vocalChannelId != null) {
+            event.getHook().editOriginal("This trace ticket is already associated with the vocal channel <#%s>"
+                                                 .formatted(traceTicket.vocalChannelId)).queue();
+            return;
+        }
+
+        val vocalChannel = guild.createVoiceChannel("vocal-%s".formatted(channel.getName()),
+                                                    channel.getParentCategory())
+                                .addMemberPermissionOverride(traceTicket.createdBy,
+                                                             List.of(VIEW_CHANNEL,
+                                                                     VOICE_CONNECT,
+                                                                     VOICE_SPEAK,
+                                                                     VOICE_STREAM),
+                                                             List.of(VOICE_USE_SOUNDBOARD,
+                                                                     // use the text channel to send messages
+                                                                     MESSAGE_SEND,
+                                                                     VOICE_USE_EXTERNAL_SOUNDS)
+                                ).complete();
+        traceTicket.vocalChannelId = vocalChannel.getIdLong();
+        channel.sendMessage("Vocal channel created %s <@%s>".formatted(vocalChannel.getAsMention(),
+                                                                       traceTicket.createdBy)).queue();
+
+        event.getHook().editOriginal("Vocal channel created %s".formatted(vocalChannel.getAsMention())).queue();
+    }
+
+    @Transactional
+    public void closeTraceTicket(SlashCommandInteractionEvent event) {
+        if (event.getChannel().getType() != ChannelType.TEXT) {
+            event.reply("This command must be used in a text channel").setEphemeral(true).queue();
+            return;
+        }
+        val guild = requireNonNull(event.getGuild());
+        val channel = event.getChannel().asTextChannel();
+
+        event.deferReply().setEphemeral(true).queue();
+
+        val traceTicketModel = traceTicketRepository.findByChannel(channel);
+        if (traceTicketModel.isEmpty()) {
+            event.reply("This channel is not a trace ticket").queue();
+            return;
+        }
+        val traceTicket = traceTicketModel.get();
+
+        if (getManagerConfig(event.getMember(), traceTicket).isEmpty()) {
+            event.getHook().editOriginal("You are not allowed to close this trace ticket").queue();
+            return;
+        }
+
+        val webhookChannel = requireNonNull(guild.getTextChannelById(traceTicket.traceConfig.webhookChannelId));
+        copyMessagesToLogChannelThenDelete(getAllMessages(channel),
+                                           webhookChannel,
+                                           "log-%s".formatted(channel.getName()),
+                                           channel);
+
+        traceTicket.closedAt = ZonedDateTime.now();
+
+        if (traceTicket.vocalChannelId != null) {
+            val vocalChannel = guild.getVoiceChannelById(traceTicket.vocalChannelId);
+            if (vocalChannel == null)
+                logger().warn("Vocal channel %s not found, skipping deletion".formatted(traceTicket.vocalChannelId));
+            else
+                vocalChannel.delete().queue();
+        }
     }
 }
