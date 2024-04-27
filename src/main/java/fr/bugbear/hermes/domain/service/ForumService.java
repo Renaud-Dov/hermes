@@ -6,6 +6,7 @@
 package fr.bugbear.hermes.domain.service;
 
 import fr.bugbear.hermes.Logged;
+import fr.bugbear.hermes.data.model.ManagerModel;
 import fr.bugbear.hermes.data.model.PracticalTagModel;
 import fr.bugbear.hermes.data.repository.ForumRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -27,27 +28,27 @@ import java.util.stream.Collectors;
 public class ForumService implements Logged {
     @Inject ForumRepository forumRepository;
 
-    public boolean isManager(Member member, ForumChannel forumChannel) {
-
+    public Optional<ManagerModel> getManagerConfig(Member member, ForumChannel forumChannel) {
         val forum = forumRepository.findByForumChannel(forumChannel);
-        if (forum.isEmpty()) {
-            return false;
-        }
-
+        if (forum.isEmpty()) return Optional.empty();
+        val forumModel = forum.get();
         val userId = member.getIdLong();
         val userRoles = member.getRoles();
 
-        val forumModel = forum.get();
-        val managers = forumModel.managers;
+        return forumModel.managers.stream()
+                                  .filter(m -> m.users.contains(userId) ||
+                                               m.roles.stream()
+                                                      .anyMatch(role -> userRoles.stream().anyMatch(r -> r.getIdLong()
+                                                                                                         == role)))
+                                  .findFirst();
+    }
 
-        // managers contains a list of user ids and a list of role ids
-        return managers.stream().flatMap(m -> m.users.stream()).toList().contains(userId) ||
-               managers.stream().flatMap(m -> m.roles.stream()).toList().stream()
-                       .anyMatch(role -> userRoles.stream().anyMatch(r -> r.getIdLong() == role));
+    public boolean isManager(Member member, ForumChannel forumChannel) {
+        return getManagerConfig(member, forumChannel).isPresent();
     }
 
     public boolean isNotManager(Member member, ForumChannel forumChannel) {
-        return !isManager(member, forumChannel);
+        return getManagerConfig(member, forumChannel).isEmpty();
     }
 
     public Optional<ForumTag> getTraceTag(ForumChannel forumChannel) {

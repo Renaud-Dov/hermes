@@ -17,14 +17,13 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.val;
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.entities.channel.forums.BaseForumTag;
 import net.dv8tion.jda.api.entities.channel.forums.ForumTag;
+import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateAppliedTagsEvent;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateNameEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
@@ -35,7 +34,6 @@ import net.dv8tion.jda.internal.entities.GuildImpl;
 import net.dv8tion.jda.internal.entities.channel.concrete.ForumChannelImpl;
 import net.dv8tion.jda.internal.entities.channel.concrete.ThreadChannelImpl;
 
-import java.awt.*;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -134,36 +132,12 @@ public class TicketService implements Logged {
         // analyze tags
         analyzeTags(threadChannel, threadChannel.getAppliedTags());
 
-        val hookMessage = webhookService.sendEmbed(forum, getTicketWebhookEmbed(ticket, ticketOwner))
+        val hookMessage = webhookService.sendEmbed(forum, embedUtils.getTicketWebhookEmbed(ticket, ticketOwner))
                                         // add link button
                                         .addActionRow(Button.link(threadChannel.getJumpUrl(), "Go to"))
                                         .complete();
         ticket.webhookMessageUrl = hookMessage.getJumpUrl();
 
-    }
-
-    private MessageEmbed getTicketWebhookEmbed(TicketModel ticket, Member author) {
-        val status = switch (ticket.status) {
-            case OPEN -> ":green_circle: Open";
-            case IN_PROGRESS -> ":yellow_circle: In progress";
-            case CLOSED, DELETED -> ":red_circle: Closed";
-        };
-        final Color color = switch (ticket.status) {
-            case OPEN -> Color.GREEN;
-            case IN_PROGRESS -> Color.ORANGE;
-            case CLOSED, DELETED -> Color.RED;
-        };
-        String tags = ticket.tags.isEmpty() ? "No tags applied" :
-                      String.join("\n", ticket.tags.stream().map("**%s**"::formatted).toList());
-        return new EmbedBuilder()
-                .setTitle(ticket.name)
-                .setColor(color)
-                .setAuthor(author.getEffectiveName(), null, author.getEffectiveAvatarUrl())
-                .addField("Status", status, true)
-                .addField("Tags", tags, true)
-                .setTimestamp(ticket.createdAt.toInstant())
-                .setFooter("Thread ID: " + ticket.threadId)
-                .build();
     }
 
     @Transactional
@@ -198,7 +172,7 @@ public class TicketService implements Logged {
              .setEphemeral(true)
              .queue();
 
-        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, threadChannel.getOwner())).queue();
+        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, threadChannel.getOwner())).queue();
     }
 
     @Transactional
@@ -224,8 +198,8 @@ public class TicketService implements Logged {
         val ticket = ticketRepository.findByThread(threadChannel).orElseThrow();
         val webhookChannel = requireNonNull(threadChannel.getJDA()
                                                          .getTextChannelById(ticket.forum.webhookChannelId));
-
-        if (forumService.isNotManager(member, forumChannel)) {
+        val managerConfig = forumService.getManagerConfig(member, forumChannel);
+        if (managerConfig.isEmpty()) {
             event.getHook().editOriginal("You are not allowed to close the ticket").queue();
             return;
         }
@@ -237,9 +211,11 @@ public class TicketService implements Logged {
             threadChannel.delete().reason("Ticket closed").queue();
         } else {
             // archive the ticket
+
             threadChannel.sendMessageEmbeds(embedUtils.getCloseTicketMessage(typeOption,
                                                                              requireNonNull(event.getMember()),
-                                                                             reasonOption)
+                                                                             reasonOption,
+                                                                             managerConfig.get().customMessage)
             ).queue();
             threadChannel.getManager().setArchived(true).setLocked(true).reason("Ticket closed").queue();
 
@@ -256,7 +232,8 @@ public class TicketService implements Logged {
             val actionRow = new ArrayList<ItemComponent>() {{
                 add(Button.link(threadChannel.getJumpUrl(), "Go to"));
                 if (typeOption == CloseType.RESOLVE)
-                    add(Button.primary("%s-%d".formatted(REOPEN_TICKET, ticket.id), "Reopen"));
+                    add(Button.primary("%s-%d".formatted(REOPEN_TICKET, ticket.id), "Reopen")
+                              .withEmoji(Emoji.fromFormatted("U+1F513"))); // represented by a unlock emoji
             }};
             channel.sendMessageEmbeds(embedUtils.getPrivateCloseTicketMessage(ticket, threadChannel,
                                                                               typeOption,
@@ -265,7 +242,7 @@ public class TicketService implements Logged {
                    .addActionRow(actionRow)
                    .queue();
         });
-        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, ticketOwner)).queue();
+        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, ticketOwner)).queue();
     }
 
     @Transactional
@@ -326,7 +303,7 @@ public class TicketService implements Logged {
         // remove the button from the message
         event.getMessage().editMessageComponents().queue();
 
-        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, author)).queue();
+        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, author)).queue();
     }
 
     @Transactional
@@ -372,7 +349,8 @@ public class TicketService implements Logged {
             val newTicketName = getTicketName(ticket.id, threadChannel.getName());
             ticket.name = newTicketName;
             threadChannel.getManager().setName(newTicketName).queue();
-            webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, threadChannel.getOwner())).queue();
+            webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, threadChannel.getOwner()))
+                          .queue();
         }
     }
 
@@ -391,7 +369,7 @@ public class TicketService implements Logged {
 
         // TODO: check for practical tags
         val threadOwner = event.getGuild().retrieveMemberById(threadChannel.getOwnerIdLong()).complete();
-        webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, threadOwner)).queue();
+        webhookService.editEmbed(ticket, embedUtils.getTicketWebhookEmbed(ticket, threadOwner)).queue();
     }
 
     public void onTicketArchivedOrLocked(ThreadChannel threadChannel, User user) {
