@@ -202,11 +202,15 @@ public class TraceTicketService implements Logged {
                                                                      MESSAGE_SEND,
                                                                      VOICE_USE_EXTERNAL_SOUNDS)
                                 ).complete();
+        traceTicket.updatedAt = ZonedDateTime.now();
         traceTicket.vocalChannelId = vocalChannel.getIdLong();
         channel.sendMessage("Vocal channel created %s <@%s>".formatted(vocalChannel.getAsMention(),
                                                                        traceTicket.createdBy)).queue();
 
+
         event.getHook().editOriginal("Vocal channel created %s".formatted(vocalChannel.getAsMention())).queue();
+        vocalChannel.sendMessage("If you want to write something, please use the text channel %s"
+                                         .formatted(channel.getAsMention())).queue();
     }
 
     @Transactional
@@ -238,6 +242,7 @@ public class TraceTicketService implements Logged {
                                            "log-%s".formatted(channel.getName()),
                                            channel);
 
+        traceTicket.updatedAt = ZonedDateTime.now();
         traceTicket.closedAt = ZonedDateTime.now();
 
         if (traceTicket.vocalChannelId != null) {
