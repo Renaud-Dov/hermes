@@ -1,0 +1,33 @@
+name: Build and Publish
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
+          settings-path: ${{ github.workspace }} # location for the settings.xml file
+
+      - name: Build docker image and push to Github Registry
+        run: mvn install -Pdocker-build -Pdocker-push
+        env:
+          QUARKUS_DOCKER_BUILDX_PLATFORMS: linux/amd64,linux/arm64
+          QUARKUS_DOCKER_CACHE_FROM: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          QUARKUS_CONTAINER_IMAGE_ADDITIONAL_TAGS: latest
+          CI_REGISTRY_IMAGE: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          CI_REGISTRY_USER: ${{ github.actor }}
+          CI_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
