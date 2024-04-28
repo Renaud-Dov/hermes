@@ -58,10 +58,6 @@
             <artifactId>quarkus-arc</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-container-image-docker</artifactId>
-        </dependency>
-        <dependency>
             <groupId>net.dv8tion</groupId>
             <artifactId>JDA</artifactId>
             <version>5.0.0-beta.22</version>
@@ -138,6 +134,37 @@
             <properties>
                 <skipITs>false</skipITs>
                 <quarkus.package.type>native</quarkus.package.type>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>prod</id>
+            <properties>
+                <quarkus.package.type>uber-jar</quarkus.package.type>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>docker-build</id>
+            <properties>
+                <quarkus.docker.dockerfile-jvm-path>Dockerfile</quarkus.docker.dockerfile-jvm-path>
+                <quarkus.container-image.builder>docker</quarkus.container-image.builder>
+                <quarkus.container-image.build>true</quarkus.container-image.build>
+                <quarkus.container-image.image>${env.CI_REGISTRY_IMAGE}</quarkus.container-image.image>
+            </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>io.quarkus</groupId>
+                    <artifactId>quarkus-container-image-docker</artifactId>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>docker-push</id>
+            <properties>
+                <quarkus.container-image.push>true</quarkus.container-image.push>
+                <quarkus.container-image.username>${env.CI_REGISTRY_USER}</quarkus.container-image.username>
+                <quarkus.container-image.password>${env.CI_REGISTRY_PASSWORD}</quarkus.container-image.password>
             </properties>
         </profile>
     </profiles>
