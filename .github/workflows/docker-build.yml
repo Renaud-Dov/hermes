@@ -5,6 +5,9 @@ on:
     branches:
       - master
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,11 +25,14 @@ jobs:
           server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
           settings-path: ${{ github.workspace }} # location for the settings.xml file
 
+      - name: Get Package Name
+        run: echo "PACKAGE_NAME=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)" >> $GITHUB_ENV
+
       - name: Build docker image and push to Github Registry
         run: mvn install -Pdocker-build -Pdocker-push
         env:
           QUARKUS_DOCKER_BUILDX_PLATFORMS: linux/amd64,linux/arm64
-          QUARKUS_DOCKER_CACHE_FROM: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          QUARKUS_DOCKER_CACHE_FROM: "${{ env.REGISTRY }}/${{ env.PACKAGE_NAME }}:latest"
           QUARKUS_CONTAINER_IMAGE_ADDITIONAL_TAGS: latest
           IMAGE_GROUP: ${{ github.repository_owner }}
           CI_REGISTRY_USER: ${{ github.actor }}
