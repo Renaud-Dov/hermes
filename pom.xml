@@ -150,7 +150,8 @@
                 <quarkus.docker.dockerfile-jvm-path>Dockerfile</quarkus.docker.dockerfile-jvm-path>
                 <quarkus.container-image.builder>docker</quarkus.container-image.builder>
                 <quarkus.container-image.build>true</quarkus.container-image.build>
-                <quarkus.container-image.image>${env.CI_REGISTRY_IMAGE}</quarkus.container-image.image>
+                <quarkus.container-image.registry>${env.REGISTRY}</quarkus.container-image.registry>
+                <quarkus.container-image.group>${env.IMAGE_GROUP}</quarkus.container-image.group>
             </properties>
             <dependencies>
                 <dependency>

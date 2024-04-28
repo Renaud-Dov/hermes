@@ -28,6 +28,6 @@ jobs:
           QUARKUS_DOCKER_BUILDX_PLATFORMS: linux/amd64,linux/arm64
           QUARKUS_DOCKER_CACHE_FROM: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           QUARKUS_CONTAINER_IMAGE_ADDITIONAL_TAGS: latest
-          CI_REGISTRY_IMAGE: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_GROUP: ${{ github.repository_owner }}
           CI_REGISTRY_USER: ${{ github.actor }}
           CI_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
