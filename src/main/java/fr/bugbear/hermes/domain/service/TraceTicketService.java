@@ -7,6 +7,7 @@ package fr.bugbear.hermes.domain.service;
 
 import fr.bugbear.hermes.Logged;
 import fr.bugbear.hermes.data.model.ManagerModel;
+import fr.bugbear.hermes.data.model.TraceConfigModel;
 import fr.bugbear.hermes.data.model.TraceTicketModel;
 import fr.bugbear.hermes.data.repository.TraceConfigRepository;
 import fr.bugbear.hermes.data.repository.TraceTicketRepository;
@@ -18,6 +19,7 @@ import lombok.val;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
@@ -68,6 +70,15 @@ public class TraceTicketService implements Logged {
                                    .findFirst();
     }
 
+    public boolean canMemberUseTag(Member member, TraceConfigModel tagConfig) {
+        return tagConfig.usersAllowed.contains(member.getIdLong()) ||
+               tagConfig.rolesAllowed.stream()
+                                     .noneMatch(role -> member.getRoles()
+                                                              .stream()
+                                                              .anyMatch(r -> r.getIdLong() == role));
+
+    }
+
     @Transactional
     public void traceTicket(SlashCommandInteractionEvent event) {
         val tagOption = getOptionAsString(event, "tag").orElseThrow();
@@ -80,10 +91,7 @@ public class TraceTicketService implements Logged {
         }
         val tagConfig = tagConfigModel.get();
         val member = requireNonNull(event.getMember());
-
-        if (!tagConfig.usersAllowed.contains(event.getUser().getIdLong()) &&
-            tagConfig.rolesAllowed.stream()
-                                  .noneMatch(role -> member.getRoles().stream().anyMatch(r -> r.getIdLong() == role))) {
+        if (!canMemberUseTag(member, tagConfig)) {
             event.reply("You are not allowed to create a trace ticket with this tag.").setEphemeral(true).queue();
             return;
         }
@@ -155,7 +163,6 @@ public class TraceTicketService implements Logged {
                                       question).getAsString()))
                       .addActionRow(Button.link(newChannel.getJumpUrl(), "Go to"))
                       .queue();
-        // TODO: send webhook to the trace channel
     }
 
     @Transactional
@@ -207,7 +214,6 @@ public class TraceTicketService implements Logged {
         channel.sendMessage("Vocal channel created %s <@%s>".formatted(vocalChannel.getAsMention(),
                                                                        traceTicket.createdBy)).queue();
 
-
         event.getHook().editOriginal("Vocal channel created %s".formatted(vocalChannel.getAsMention())).queue();
         vocalChannel.sendMessage("If you want to write something, please use the text channel %s"
                                          .formatted(channel.getAsMention())).queue();
@@ -252,5 +258,34 @@ public class TraceTicketService implements Logged {
             else
                 vocalChannel.delete().queue();
         }
+    }
+
+    public void traceAutoComplete(CommandAutoCompleteInteractionEvent event) {
+        val member = requireNonNull(event.getMember());
+        val guild = requireNonNull(event.getGuild());
+        if (!event.getFocusedOption().getName().equals("tag")) {
+            logger().error("Unknown option name : {}", event.getFocusedOption().getName());
+            return;
+        }
+        val focusedOptionValue = event.getFocusedOption().getValue();
+
+        val now = ZonedDateTime.now();
+        val availableTags = traceConfigRepository.findTagsByGuild(guild)
+                                                 .stream()
+                                                 .filter(c -> c.fromDateTime.isBefore(now)
+                                                              && c.endDateTime.isAfter(now))
+                                                 .toList();
+
+        val tags = availableTags.stream()
+                                .filter(tag -> canMemberUseTag(member, tag))
+                                .map(tag -> tag.tag)
+                                .toList();
+
+        if (focusedOptionValue.isBlank()) {
+            event.replyChoiceStrings(tags).queue();
+            return;
+        }
+        event.replyChoiceStrings(tags.stream().filter(tag -> tag.toLowerCase().contains(focusedOptionValue)).toList())
+             .queue();
     }
 }

@@ -19,6 +19,7 @@ import net.dv8tion.jda.api.events.channel.update.ChannelUpdateAppliedTagsEvent;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateNameEvent;
 import net.dv8tion.jda.api.events.channel.update.GenericChannelUpdateEvent;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
@@ -28,6 +29,7 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -74,7 +76,7 @@ public class DiscordService implements Logged {
                                  .addOption(OptionType.INTEGER, "id", "The ID of the ticket to link", true);
 
         val traceTicket = Commands.slash(TRACE, "Trace ticket")
-                                  .addOption(OptionType.STRING, "tag", "Tag category", true);
+                                  .addOption(OptionType.STRING, "tag", "Tag category", true, true);
 
         val associateVocalToTrace = Commands.slash(TRACE_VOCAL, "Associate a vocal channel to a trace ticket");
 
@@ -140,6 +142,24 @@ public class DiscordService implements Logged {
                                 + "error ID : "
                                 + "%s").formatted(errorId))
                  .queue();
+        }
+    }
+
+    public void onCommandAutoComplete(CommandAutoCompleteInteractionEvent event) {
+        val commandName = event.getName();
+        logger().info("Command autocomplete : {}", commandName);
+        try {
+            switch (commandName) {
+                case TRACE -> traceTicketService.traceAutoComplete(event);
+                default -> {
+                    logger().warn("Unknown command : {}", commandName);
+                    event.replyChoices(List.of()).queue();
+                }
+            }
+        } catch (Exception e) {
+            UUID errorId = UUID.randomUUID();
+            logger().error("Error ID : {}", errorId, e);
+            event.replyChoices(List.of()).queue();
         }
     }
 
