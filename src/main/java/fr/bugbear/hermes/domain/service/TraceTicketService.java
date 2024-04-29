@@ -48,6 +48,7 @@ import static net.dv8tion.jda.api.Permission.VOICE_SPEAK;
 import static net.dv8tion.jda.api.Permission.VOICE_STREAM;
 import static net.dv8tion.jda.api.Permission.VOICE_USE_EXTERNAL_SOUNDS;
 import static net.dv8tion.jda.api.Permission.VOICE_USE_SOUNDBOARD;
+import static net.dv8tion.jda.api.interactions.commands.build.OptionData.MAX_CHOICES;
 
 @ApplicationScoped
 public class TraceTicketService implements Logged {
@@ -86,7 +87,7 @@ public class TraceTicketService implements Logged {
         val tagConfigModel = traceConfigRepository.findByTag(requireNonNull(event.getGuild()).getIdLong(),
                                                              tagOption);
         if (tagConfigModel.isEmpty()) {
-            event.reply("This tag does not exist").setEphemeral(true).queue();
+            event.reply("This tag does not exist or is not open").setEphemeral(true).queue();
             return;
         }
         val tagConfig = tagConfigModel.get();
@@ -265,6 +266,7 @@ public class TraceTicketService implements Logged {
         val guild = requireNonNull(event.getGuild());
         if (!event.getFocusedOption().getName().equals("tag")) {
             logger().error("Unknown option name : {}", event.getFocusedOption().getName());
+            event.replyChoices(List.of()).queue();
             return;
         }
         val focusedOptionValue = event.getFocusedOption().getValue();
@@ -282,10 +284,13 @@ public class TraceTicketService implements Logged {
                                 .toList();
 
         if (focusedOptionValue.isBlank()) {
-            event.replyChoiceStrings(tags).queue();
+            event.replyChoiceStrings(tags.stream().limit(MAX_CHOICES).toList()).queue();
             return;
         }
-        event.replyChoiceStrings(tags.stream().filter(tag -> tag.toLowerCase().contains(focusedOptionValue)).toList())
+        event.replyChoiceStrings(tags.stream()
+                                     .filter(tag -> tag.toLowerCase().contains(focusedOptionValue))
+                                     .limit(MAX_CHOICES)
+                                     .toList())
              .queue();
     }
 }
