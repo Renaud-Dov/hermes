@@ -20,6 +20,7 @@ import net.dv8tion.jda.api.events.channel.update.ChannelUpdateAppliedTagsEvent;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateArchivedEvent;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateNameEvent;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
@@ -122,6 +123,13 @@ public class BotAdapter extends ListenerAdapter implements Logged {
         Arc.container().requestContext().activate();
         logEvent(event);
         discordService.onSlashCommand(event);
+        Arc.container().requestContext().deactivate();
+    }
+
+    @Override public void onCommandAutoCompleteInteraction(CommandAutoCompleteInteractionEvent event) {
+        Arc.container().requestContext().activate();
+        logEvent(event);
+        discordService.onCommandAutoComplete(event);
         Arc.container().requestContext().deactivate();
     }
 

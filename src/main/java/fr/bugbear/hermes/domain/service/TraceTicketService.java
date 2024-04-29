@@ -7,6 +7,7 @@ package fr.bugbear.hermes.domain.service;
 
 import fr.bugbear.hermes.Logged;
 import fr.bugbear.hermes.data.model.ManagerModel;
+import fr.bugbear.hermes.data.model.TraceConfigModel;
 import fr.bugbear.hermes.data.model.TraceTicketModel;
 import fr.bugbear.hermes.data.repository.TraceConfigRepository;
 import fr.bugbear.hermes.data.repository.TraceTicketRepository;
@@ -18,6 +19,7 @@ import lombok.val;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
@@ -46,6 +48,7 @@ import static net.dv8tion.jda.api.Permission.VOICE_SPEAK;
 import static net.dv8tion.jda.api.Permission.VOICE_STREAM;
 import static net.dv8tion.jda.api.Permission.VOICE_USE_EXTERNAL_SOUNDS;
 import static net.dv8tion.jda.api.Permission.VOICE_USE_SOUNDBOARD;
+import static net.dv8tion.jda.api.interactions.commands.build.OptionData.MAX_CHOICES;
 
 @ApplicationScoped
 public class TraceTicketService implements Logged {
@@ -68,6 +71,15 @@ public class TraceTicketService implements Logged {
                                    .findFirst();
     }
 
+    public boolean canMemberUseTag(Member member, TraceConfigModel tagConfig) {
+        return tagConfig.usersAllowed.contains(member.getIdLong()) ||
+               tagConfig.rolesAllowed.stream()
+                                     .noneMatch(role -> member.getRoles()
+                                                              .stream()
+                                                              .anyMatch(r -> r.getIdLong() == role));
+
+    }
+
     @Transactional
     public void traceTicket(SlashCommandInteractionEvent event) {
         val tagOption = getOptionAsString(event, "tag").orElseThrow();
@@ -75,15 +87,12 @@ public class TraceTicketService implements Logged {
         val tagConfigModel = traceConfigRepository.findByTag(requireNonNull(event.getGuild()).getIdLong(),
                                                              tagOption);
         if (tagConfigModel.isEmpty()) {
-            event.reply("This tag does not exist").setEphemeral(true).queue();
+            event.reply("This tag does not exist or is not open").setEphemeral(true).queue();
             return;
         }
         val tagConfig = tagConfigModel.get();
         val member = requireNonNull(event.getMember());
-
-        if (!tagConfig.usersAllowed.contains(event.getUser().getIdLong()) &&
-            tagConfig.rolesAllowed.stream()
-                                  .noneMatch(role -> member.getRoles().stream().anyMatch(r -> r.getIdLong() == role))) {
+        if (!canMemberUseTag(member, tagConfig)) {
             event.reply("You are not allowed to create a trace ticket with this tag.").setEphemeral(true).queue();
             return;
         }
@@ -155,7 +164,6 @@ public class TraceTicketService implements Logged {
                                       question).getAsString()))
                       .addActionRow(Button.link(newChannel.getJumpUrl(), "Go to"))
                       .queue();
-        // TODO: send webhook to the trace channel
     }
 
     @Transactional
@@ -207,7 +215,6 @@ public class TraceTicketService implements Logged {
         channel.sendMessage("Vocal channel created %s <@%s>".formatted(vocalChannel.getAsMention(),
                                                                        traceTicket.createdBy)).queue();
 
-
         event.getHook().editOriginal("Vocal channel created %s".formatted(vocalChannel.getAsMention())).queue();
         vocalChannel.sendMessage("If you want to write something, please use the text channel %s"
                                          .formatted(channel.getAsMention())).queue();
@@ -252,5 +259,38 @@ public class TraceTicketService implements Logged {
             else
                 vocalChannel.delete().queue();
         }
+    }
+
+    public void traceAutoComplete(CommandAutoCompleteInteractionEvent event) {
+        val member = requireNonNull(event.getMember());
+        val guild = requireNonNull(event.getGuild());
+        if (!event.getFocusedOption().getName().equals("tag")) {
+            logger().error("Unknown option name : {}", event.getFocusedOption().getName());
+            event.replyChoices(List.of()).queue();
+            return;
+        }
+        val focusedOptionValue = event.getFocusedOption().getValue();
+
+        val now = ZonedDateTime.now();
+        val availableTags = traceConfigRepository.findTagsByGuild(guild)
+                                                 .stream()
+                                                 .filter(c -> c.fromDateTime.isBefore(now)
+                                                              && c.endDateTime.isAfter(now))
+                                                 .toList();
+
+        val tags = availableTags.stream()
+                                .filter(tag -> canMemberUseTag(member, tag))
+                                .map(tag -> tag.tag)
+                                .toList();
+
+        if (focusedOptionValue.isBlank()) {
+            event.replyChoiceStrings(tags.stream().limit(MAX_CHOICES).toList()).queue();
+            return;
+        }
+        event.replyChoiceStrings(tags.stream()
+                                     .filter(tag -> tag.toLowerCase().contains(focusedOptionValue))
+                                     .limit(MAX_CHOICES)
+                                     .toList())
+             .queue();
     }
 }

@@ -205,7 +205,6 @@ public class TicketService implements Logged {
             return;
         }
         event.getHook().editOriginal("Ticket closed").queue();
-        // TODO: log to webhook channel
         if (typeOption == CloseType.DELETE) {
             // copy all the messages to the webhook channel and delete the ticket
             copyMessagesToLogChannelThenDelete(getAllMessages(threadChannel), webhookChannel, threadChannel.getName(),
