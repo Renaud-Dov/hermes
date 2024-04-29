@@ -76,11 +76,14 @@ public class DiscordService implements Logged {
                                  .addOption(OptionType.INTEGER, "id", "The ID of the ticket to link", true);
 
         val traceTicket = Commands.slash(TRACE, "Trace ticket")
+                                  .setGuildOnly(true)
                                   .addOption(OptionType.STRING, "tag", "Tag category", true, true);
 
-        val associateVocalToTrace = Commands.slash(TRACE_VOCAL, "Associate a vocal channel to a trace ticket");
+        val associateVocalToTrace = Commands.slash(TRACE_VOCAL, "Associate a vocal channel to a trace ticket")
+                                            .setGuildOnly(true);
 
         val googleCommand = Commands.slash(GOOGLE, "What do you know about `Let me google that for you`?")
+                                    .setGuildOnly(true)
                                     .addOption(OptionType.STRING, "query", "The query to search", true)
                                     .addOption(OptionType.STRING, "message", "The message to send", false);
 
