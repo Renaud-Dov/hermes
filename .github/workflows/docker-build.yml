@@ -31,7 +31,7 @@ jobs:
       - name: Build docker image and push to Github Registry
         run: mvn install -Pdocker-build -Pdocker-push
         env:
-          QUARKUS_DOCKER_BUILDX_PLATFORMS: linux/amd64,linux/arm64
+          QUARKUS_DOCKER_BUILDX_PLATFORM: linux/amd64,linux/arm64
           QUARKUS_DOCKER_CACHE_FROM: "${{ env.REGISTRY }}/${{ env.PACKAGE_NAME }}:latest"
           QUARKUS_CONTAINER_IMAGE_ADDITIONAL_TAGS: latest
           IMAGE_GROUP: ${{ github.repository_owner }}
