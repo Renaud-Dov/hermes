@@ -27,6 +27,9 @@ jobs:
 
       - name: Get Package Name
         run: echo "PACKAGE_NAME=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)" >> $GITHUB_ENV
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build docker image and push to Github Registry
         run: mvn install -Pdocker-build -Pdocker-push
