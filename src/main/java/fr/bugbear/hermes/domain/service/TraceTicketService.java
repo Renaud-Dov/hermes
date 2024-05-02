@@ -131,7 +131,7 @@ public class TraceTicketService implements Logged {
 
         // create channel inside the category of the tag
         val category = requireNonNull(requireNonNull(event.getGuild()).getCategoryById(tagConfig.categoryChannelId));
-        val webhookChannel = requireNonNull(event.getGuild().getTextChannelById(tagConfig.webhookChannelId));
+        val webhookChannel = requireNonNull(event.getJDA().getTextChannelById(tagConfig.webhookChannelId));
 
         val newChannel = event.getGuild()
                               .createTextChannel("trace-%s".formatted(login.replace(".", "_")), category)
