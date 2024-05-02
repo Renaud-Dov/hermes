@@ -182,7 +182,7 @@ public class TraceTicketService implements Logged {
 
         val traceTicketModel = traceTicketRepository.findByChannel(channel);
         if (traceTicketModel.isEmpty()) {
-            event.reply("This channel is not a trace ticket").queue();
+            event.getHook().editOriginal("This channel is not a trace ticket").queue();
             return;
         }
         val traceTicket = traceTicketModel.get();
