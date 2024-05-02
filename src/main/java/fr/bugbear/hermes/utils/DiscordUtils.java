@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
+import net.dv8tion.jda.api.utils.TimeFormat;
 
 import java.util.List;
 import java.util.Optional;
@@ -57,8 +58,29 @@ public class DiscordUtils {
         // create a new thread to avoid blocking the event loop
         logChannel.createThreadChannel(threadName).queue(thread -> {
             messages.reversed().forEach(message -> {
-                // TODO: check size does not exceed the limit of 2000 characters
-                thread.sendMessageFormat("%s: %s", message.getAuthor().getName(), message.getContentRaw()).queue();
+                // replace <@&ID> and <@ID> mentions by `<@&ID>` and `<@ID>` to avoid pinging
+                var messageText = message.getContentRaw()
+                                         .replaceAll("<@&([0-9]+)>", "`<@&$1>`")
+                                         .replaceAll("<@([0-9]+)>", "`<@$1>`");
+                messageText = messageText + messageText;
+                val timestamp = TimeFormat.TIME_LONG.format(message.getTimeCreated());
+                val sizeMessage = messageText.length();
+                thread.sendMessageFormat("%s (%s): %s",
+                                         message.getAuthor().getEffectiveName(),
+                                         timestamp,
+                                         // limit the message to 1900 characters to avoid Discord API limit
+                                         messageText.substring(0, Math.min(sizeMessage, 1900))
+                ).queue();
+                if (sizeMessage > 1900) {
+                    for (int i = 1900; i < sizeMessage; i += 1900) {
+                        if (i + 1900 >= sizeMessage) {
+                            thread.sendMessage(messageText.substring(i)).queue();
+                        } else {
+                            thread.sendMessage(messageText.substring(i, i + 1900)).queue();
+                        }
+                    }
+                }
+
             });
             channel.delete().reason("Ticket closed").queue();
         });
@@ -81,6 +103,5 @@ public class DiscordUtils {
         }
         return Optional.empty();
     }
-
 
 }
