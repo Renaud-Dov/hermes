@@ -246,7 +246,8 @@ public class TraceTicketService implements Logged {
             return;
         }
 
-        val webhookChannel = requireNonNull(guild.getTextChannelById(traceTicket.traceConfig.webhookChannelId));
+        val webhookChannel = requireNonNull(event.getJDA()
+                                                 .getTextChannelById(traceTicket.traceConfig.webhookChannelId));
         copyMessagesToLogChannelThenDelete(getAllMessages(channel),
                                            webhookChannel,
                                            "log-%s".formatted(channel.getName()),
