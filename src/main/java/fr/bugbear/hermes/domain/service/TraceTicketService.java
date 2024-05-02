@@ -130,16 +130,19 @@ public class TraceTicketService implements Logged {
         val tagConfig = traceConfigRepository.findByIdOptional(tagId).orElseThrow();
 
         // create channel inside the category of the tag
-        val category = requireNonNull(requireNonNull(event.getGuild())
-                                              .getCategoryById(tagConfig.categoryChannelId));
+        val category = requireNonNull(requireNonNull(event.getGuild()).getCategoryById(tagConfig.categoryChannelId));
+        val webhookChannel = requireNonNull(event.getGuild().getTextChannelById(tagConfig.webhookChannelId));
+
         val newChannel = event.getGuild()
                               .createTextChannel("trace-%s".formatted(login.replace(".", "_")), category)
-                              .addMemberPermissionOverride(event.getUser().getIdLong(),
-                                                           List.of(VIEW_CHANNEL,
-                                                                   MESSAGE_SEND,
-                                                                   MESSAGE_HISTORY),
-                                                           List.of())
                               .complete();
+        newChannel.getManager()
+                  .putMemberPermissionOverride(event.getUser().getIdLong(),
+                                               List.of(VIEW_CHANNEL,
+                                                       MESSAGE_SEND,
+                                                       MESSAGE_HISTORY),
+                                               List.of())
+                  .complete();
         event.reply("New channel created: %s".formatted(newChannel.getAsMention())).setEphemeral(true).queue();
 
         val traceTicket = new TraceTicketModel()
@@ -158,7 +161,6 @@ public class TraceTicketService implements Logged {
         if (question != null && !question.getAsString().isEmpty())
             newChannel.sendMessage(question.getAsString()).queue();
 
-        val webhookChannel = requireNonNull(event.getGuild().getTextChannelById(tagConfig.webhookChannelId));
         webhookChannel.sendMessageEmbeds(newTraceTicketLog(traceTicket, newChannel,
                                                            requireNonNull(event.getMember()), login, requireNonNull(
                                       question).getAsString()))
@@ -199,17 +201,18 @@ public class TraceTicketService implements Logged {
         }
 
         val vocalChannel = guild.createVoiceChannel("vocal-%s".formatted(channel.getName()),
-                                                    channel.getParentCategory())
-                                .addMemberPermissionOverride(traceTicket.createdBy,
-                                                             List.of(VIEW_CHANNEL,
-                                                                     VOICE_CONNECT,
-                                                                     VOICE_SPEAK,
-                                                                     VOICE_STREAM),
-                                                             List.of(VOICE_USE_SOUNDBOARD,
-                                                                     // use the text channel to send messages
-                                                                     MESSAGE_SEND,
-                                                                     VOICE_USE_EXTERNAL_SOUNDS)
-                                ).complete();
+                                                    channel.getParentCategory()).complete();
+        vocalChannel.getManager()
+                    .putMemberPermissionOverride(traceTicket.createdBy,
+                                                 List.of(VIEW_CHANNEL,
+                                                         VOICE_CONNECT,
+                                                         VOICE_SPEAK,
+                                                         VOICE_STREAM),
+                                                 List.of(VOICE_USE_SOUNDBOARD,
+                                                         // use the text channel to send messages
+                                                         MESSAGE_SEND,
+                                                         VOICE_USE_EXTERNAL_SOUNDS)
+                    ).complete();
         traceTicket.updatedAt = ZonedDateTime.now();
         traceTicket.vocalChannelId = vocalChannel.getIdLong();
         channel.sendMessage("Vocal channel created %s <@%s>".formatted(vocalChannel.getAsMention(),
