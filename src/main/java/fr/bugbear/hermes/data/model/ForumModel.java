@@ -27,6 +27,7 @@ import java.util.UUID;
 public class ForumModel {
     @Id
     public UUID id;
+    public String name;
     public Long channelId;
 
     public Long webhookChannelId;
