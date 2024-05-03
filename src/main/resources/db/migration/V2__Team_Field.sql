@@ -9,5 +9,5 @@ alter table team
 alter table team
     add column name varchar(255);
 
-alter table ticket
+alter table forum
     add column name varchar(255);
