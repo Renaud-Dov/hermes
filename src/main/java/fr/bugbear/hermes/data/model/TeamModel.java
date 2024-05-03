@@ -22,6 +22,10 @@ public class TeamModel {
     @Id
     public UUID id;
 
+    public String name;
+
+    public Long ownerId;
+
     @OneToMany(mappedBy = "team")
     public List<ForumModel> forums;
 
