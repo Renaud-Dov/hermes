@@ -163,24 +163,35 @@ public class TraceTicketService implements Logged {
                 .findFirst()
                 .orElseGet(() -> {
                     logger().info("Creating a new category {} for guild {}", traceTicketCategoryName, guild.getId());
-                    var category = guild.createCategory(traceTicketCategoryName);
+                    var category = guild.createCategory(traceTicketCategoryName)
+                                        .setPosition(categories.stream().mapToInt(Category::getPosition).max()
+                                                               .orElse(0) + 1)
+                                        // make the category private
+                                        .addPermissionOverride(guild.getPublicRole(), List.of(), List.of(VIEW_CHANNEL))
+                                        .addPermissionOverride(guild.getBotRole(), List.of(VIEW_CHANNEL), List.of())
+                                        .complete();
+
+                    val categoryManager = category.getManager();
+
                     tagConfig.managers.forEach(manager -> {
                         //noinspection ResultOfMethodCallIgnored
                         manager.roles.stream()
                                      .map(guild::getRoleById)
                                      .filter(Objects::nonNull)
-                                     .forEach(r -> category.addRolePermissionOverride(r.getIdLong(),
-                                                                                      MANAGER_PERMISSIONS,
-                                                                                      List.of()));
+                                     .forEach(r -> categoryManager.putRolePermissionOverride(r.getIdLong(),
+                                                                                             MANAGER_PERMISSIONS,
+                                                                                             List.of()));
                         //noinspection ResultOfMethodCallIgnored
                         manager.users.stream()
                                      .map(guild::getMemberById)
                                      .filter(Objects::nonNull)
-                                     .forEach(u -> category.addMemberPermissionOverride(u.getIdLong(),
-                                                                                        MANAGER_PERMISSIONS,
-                                                                                        List.of()));
+                                     .forEach(u -> categoryManager
+                                             .putMemberPermissionOverride(u.getIdLong(),
+                                                                          MANAGER_PERMISSIONS,
+                                                                          List.of()));
                     });
-                    return category.complete();
+                    categoryManager.queue();
+                    return category;
                 });
     }
 
@@ -250,8 +261,8 @@ public class TraceTicketService implements Logged {
         val webhookChannel = requireNonNull(event.getJDA().getTextChannelById(tagConfig.webhookChannelId));
 
         val newChannelName = maxString("trace-%s".formatted(login.replace(".", "_")), 100, false);
-        val newChannel = guild.createTextChannel(newChannelName, category)
-                              .complete();
+        val newChannel = category.createTextChannel(newChannelName).complete();
+
         newChannel.getManager()
                   .putMemberPermissionOverride(member.getIdLong(), USER_TEXT_PERMISSIONS, List.of())
                   .complete();
@@ -383,7 +394,9 @@ public class TraceTicketService implements Logged {
 
     /**
      * Auto complete for trace ticket command
-     * @param event the event
+     *
+     * @param event
+     *         the event
      */
     public void traceAutoComplete(CommandAutoCompleteInteractionEvent event) {
         val member = requireNonNull(event.getMember());
