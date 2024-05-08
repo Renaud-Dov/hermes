@@ -16,8 +16,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.val;
+import net.dv8tion.jda.api.Permission;
+import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
+import net.dv8tion.jda.api.entities.channel.concrete.Category;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
@@ -26,9 +29,11 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
 import net.dv8tion.jda.api.interactions.modals.Modal;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,9 +42,12 @@ import static fr.bugbear.hermes.utils.DiscordUtils.copyMessagesToLogChannelThenD
 import static fr.bugbear.hermes.utils.DiscordUtils.extractUUID;
 import static fr.bugbear.hermes.utils.DiscordUtils.getAllMessages;
 import static fr.bugbear.hermes.utils.DiscordUtils.getOptionAsString;
+import static fr.bugbear.hermes.utils.DiscordUtils.maxString;
 import static fr.bugbear.hermes.utils.EmbedUtils.newTraceTicketLog;
 import static fr.bugbear.hermes.utils.EmbedUtils.traceTicketRules;
 import static java.util.Objects.requireNonNull;
+import static net.dv8tion.jda.api.Permission.MANAGE_CHANNEL;
+import static net.dv8tion.jda.api.Permission.MANAGE_THREADS;
 import static net.dv8tion.jda.api.Permission.MESSAGE_HISTORY;
 import static net.dv8tion.jda.api.Permission.MESSAGE_SEND;
 import static net.dv8tion.jda.api.Permission.VIEW_CHANNEL;
@@ -56,8 +64,53 @@ public class TraceTicketService implements Logged {
     @Inject TraceConfigRepository traceConfigRepository;
     @Inject TraceTicketRepository traceTicketRepository;
 
-    @Inject WebhookService webhookService;
+    @ConfigProperty(name = "discord.trace.ticket.category.name") String traceTicketCategoryName;
 
+    /**
+     * Maximum number of channels that can be created in a category
+     */
+    private static final Short MAX_CATEGORY_CHANNELS = 50;
+
+    /**
+     * Permissions for managers
+     */
+    private static final List<Permission> MANAGER_PERMISSIONS = List.of(VIEW_CHANNEL,
+                                                                        MESSAGE_SEND,
+                                                                        MESSAGE_HISTORY,
+                                                                        MANAGE_CHANNEL,
+                                                                        MANAGE_THREADS);
+
+    /**
+     * Permissions for ticket creator in text channel
+     */
+    private static final List<Permission> USER_TEXT_PERMISSIONS = List.of(VIEW_CHANNEL,
+                                                                          MESSAGE_SEND,
+                                                                          MESSAGE_HISTORY);
+    /**
+     * Permissions for ticket creator in vocal channel
+     */
+    private static final List<Permission> USER_VOICE_PERMISSIONS = List.of(VIEW_CHANNEL,
+                                                                           VOICE_CONNECT,
+                                                                           VOICE_SPEAK,
+                                                                           VOICE_STREAM);
+
+    /**
+     * Prohibited permissions for ticket creator in vocal channel
+     */
+    private static final List<Permission> USER_VOICE_PROHIBITED_PERMISSIONS = List.of(VOICE_USE_SOUNDBOARD,
+                                                                                      MESSAGE_SEND,
+                                                                                      VOICE_USE_EXTERNAL_SOUNDS);
+
+    /**
+     * Get the manager configuration for a member
+     *
+     * @param member
+     *         the member
+     * @param traceTicket
+     *         the trace ticket
+     *
+     * @return the manager configuration if the member is allowed to manage the ticket
+     */
     public Optional<ManagerModel> getManagerConfig(Member member, TraceTicketModel traceTicket) {
         val traceConfig = traceTicket.traceConfig;
 
@@ -71,6 +124,16 @@ public class TraceTicketService implements Logged {
                                    .findFirst();
     }
 
+    /**
+     * Check if a member can use a tag
+     *
+     * @param member
+     *         the member
+     * @param tagConfig
+     *         the tag configuration
+     *
+     * @return true if the member can use the tag
+     */
     public boolean canMemberUseTag(Member member, TraceConfigModel tagConfig) {
         return tagConfig.usersAllowed.contains(member.getIdLong()) ||
                tagConfig.rolesAllowed.stream()
@@ -80,6 +143,53 @@ public class TraceTicketService implements Logged {
 
     }
 
+    /**
+     * Get the available category for a guild or create a new one
+     *
+     * @param guild
+     *         the guild
+     * @param tagConfig
+     *         the tag configuration
+     *
+     * @return the category
+     */
+    private Category getAvailableOrCreateCategory(Guild guild, TraceConfigModel tagConfig) {
+        val categories = guild.getCategoriesByName(traceTicketCategoryName, true);
+
+        // find a category with maximum of 50 channels
+        return categories
+                .stream()
+                .filter(category -> category.getChannels().size() < MAX_CATEGORY_CHANNELS)
+                .findFirst()
+                .orElseGet(() -> {
+                    logger().info("Creating a new category {} for guild {}", traceTicketCategoryName, guild.getId());
+                    var category = guild.createCategory(traceTicketCategoryName);
+                    tagConfig.managers.forEach(manager -> {
+                        //noinspection ResultOfMethodCallIgnored
+                        manager.roles.stream()
+                                     .map(guild::getRoleById)
+                                     .filter(Objects::nonNull)
+                                     .forEach(r -> category.addRolePermissionOverride(r.getIdLong(),
+                                                                                      MANAGER_PERMISSIONS,
+                                                                                      List.of()));
+                        //noinspection ResultOfMethodCallIgnored
+                        manager.users.stream()
+                                     .map(guild::getMemberById)
+                                     .filter(Objects::nonNull)
+                                     .forEach(u -> category.addMemberPermissionOverride(u.getIdLong(),
+                                                                                        MANAGER_PERMISSIONS,
+                                                                                        List.of()));
+                    });
+                    return category.complete();
+                });
+    }
+
+    /**
+     * Create a trace ticket
+     *
+     * @param event
+     *         the event
+     */
     @Transactional
     public void traceTicket(SlashCommandInteractionEvent event) {
         val tagOption = getOptionAsString(event, "tag").orElseThrow();
@@ -113,6 +223,12 @@ public class TraceTicketService implements Logged {
         event.replyModal(modal).queue();
     }
 
+    /**
+     * Modal interaction event for trace ticket
+     *
+     * @param event
+     *         the event
+     */
     @Transactional
     public void onModalTraceTicket(@Nonnull ModalInteractionEvent event) {
         // get uuid from the modal id
@@ -125,23 +241,19 @@ public class TraceTicketService implements Logged {
         val tagId = hasTagId.get();
 
         val login = requireNonNull(event.getValue("login")).getAsString();
-        val question = event.getValue("question");
-
         val tagConfig = traceConfigRepository.findByIdOptional(tagId).orElseThrow();
 
-        // create channel inside the category of the tag
-        val category = requireNonNull(requireNonNull(event.getGuild()).getCategoryById(tagConfig.categoryChannelId));
+        val question = event.getValue("question");
+        val guild = requireNonNull(event.getGuild());
+        val member = requireNonNull(event.getMember());
+        val category = getAvailableOrCreateCategory(guild, tagConfig);
         val webhookChannel = requireNonNull(event.getJDA().getTextChannelById(tagConfig.webhookChannelId));
 
-        val newChannel = event.getGuild()
-                              .createTextChannel("trace-%s".formatted(login.replace(".", "_")), category)
+        val newChannelName = maxString("trace-%s".formatted(login.replace(".", "_")), 100, false);
+        val newChannel = guild.createTextChannel(newChannelName, category)
                               .complete();
         newChannel.getManager()
-                  .putMemberPermissionOverride(event.getUser().getIdLong(),
-                                               List.of(VIEW_CHANNEL,
-                                                       MESSAGE_SEND,
-                                                       MESSAGE_HISTORY),
-                                               List.of())
+                  .putMemberPermissionOverride(member.getIdLong(), USER_TEXT_PERMISSIONS, List.of())
                   .complete();
         event.reply("New channel created: %s".formatted(newChannel.getAsMention())).setEphemeral(true).queue();
 
@@ -161,13 +273,17 @@ public class TraceTicketService implements Logged {
         if (question != null && !question.getAsString().isEmpty())
             newChannel.sendMessage(question.getAsString()).queue();
 
-        webhookChannel.sendMessageEmbeds(newTraceTicketLog(traceTicket, newChannel,
-                                                           requireNonNull(event.getMember()), login, requireNonNull(
-                                      question).getAsString()))
+        webhookChannel.sendMessageEmbeds(newTraceTicketLog(traceTicket, newChannel, member, login, question))
                       .addActionRow(Button.link(newChannel.getJumpUrl(), "Go to"))
                       .queue();
     }
 
+    /**
+     * Associate a vocal channel to a trace ticket
+     *
+     * @param event
+     *         the event
+     */
     @Transactional
     public void associateVocalChannel(SlashCommandInteractionEvent event) {
         // check that the event was triggered in a text channel
@@ -204,15 +320,9 @@ public class TraceTicketService implements Logged {
                                                     channel.getParentCategory()).complete();
         vocalChannel.getManager()
                     .putMemberPermissionOverride(traceTicket.createdBy,
-                                                 List.of(VIEW_CHANNEL,
-                                                         VOICE_CONNECT,
-                                                         VOICE_SPEAK,
-                                                         VOICE_STREAM),
-                                                 List.of(VOICE_USE_SOUNDBOARD,
-                                                         // use the text channel to send messages
-                                                         MESSAGE_SEND,
-                                                         VOICE_USE_EXTERNAL_SOUNDS)
-                    ).complete();
+                                                 USER_VOICE_PERMISSIONS,
+                                                 USER_VOICE_PROHIBITED_PERMISSIONS)
+                    .complete();
         traceTicket.updatedAt = ZonedDateTime.now();
         traceTicket.vocalChannelId = vocalChannel.getIdLong();
         channel.sendMessage("Vocal channel created %s <@%s>".formatted(vocalChannel.getAsMention(),
@@ -223,6 +333,12 @@ public class TraceTicketService implements Logged {
                                          .formatted(channel.getAsMention())).queue();
     }
 
+    /**
+     * Close a trace ticket and copy messages to the log channel
+     *
+     * @param event
+     *         the event
+     */
     @Transactional
     public void closeTraceTicket(SlashCommandInteractionEvent event) {
         if (event.getChannel().getType() != ChannelType.TEXT) {
@@ -250,7 +366,7 @@ public class TraceTicketService implements Logged {
                                                  .getTextChannelById(traceTicket.traceConfig.webhookChannelId));
         copyMessagesToLogChannelThenDelete(getAllMessages(channel),
                                            webhookChannel,
-                                           "log-%s".formatted(channel.getName()),
+                                           maxString("log-%s".formatted(channel.getName()), 100, false),
                                            channel);
 
         traceTicket.updatedAt = ZonedDateTime.now();
@@ -265,6 +381,10 @@ public class TraceTicketService implements Logged {
         }
     }
 
+    /**
+     * Auto complete for trace ticket command
+     * @param event the event
+     */
     public void traceAutoComplete(CommandAutoCompleteInteractionEvent event) {
         val member = requireNonNull(event.getMember());
         val guild = requireNonNull(event.getGuild());
