@@ -251,6 +251,7 @@ public class TicketService implements Logged {
         if (ticketModel.isEmpty())  // the thread is not related to a ticket
             return;
         val ticket = ticketModel.get();
+        val ticketOwner = threadChannel.getOwner();
         if (ticket.status != TicketModel.Status.OPEN && ticket.status != TicketModel.Status.IN_PROGRESS) {
             logger().debug("Couldn't register participation, ticket is not open or in progress");
             return;
@@ -263,6 +264,7 @@ public class TicketService implements Logged {
         if (ticket.takenAt == null) {
             ticket.takenAt = now;
             ticket.status = TicketModel.Status.IN_PROGRESS;
+            webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, ticketOwner)).queue();
         }
         if (ticket.participants.stream().noneMatch(p -> p.userId == member.getIdLong())) {
             val participant = new TicketParticipantModel()
@@ -278,6 +280,7 @@ public class TicketService implements Logged {
         ticket.updatedAt = now;
     }
 
+    @Transactional
     public void reopenTicket(ButtonInteractionEvent event) {
         event.deferReply(true).queue();
         val ticketId = extractID(REOPEN_TICKET, event.getComponentId()).orElseThrow();

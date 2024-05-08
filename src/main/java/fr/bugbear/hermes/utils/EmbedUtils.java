@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
+import net.dv8tion.jda.api.interactions.modals.ModalMapping;
 import net.dv8tion.jda.api.utils.TimeFormat;
 
 import java.awt.*;
@@ -117,10 +118,10 @@ public class EmbedUtils {
                                                  TextChannel channel,
                                                  Member member,
                                                  String login,
-                                                 @Nullable String reason) {
+                                                 @Nullable ModalMapping reason) {
         return new EmbedBuilder()
                 .setTitle("New trace ticket")
-                .setDescription(reason == null ? "No reason provided" : reason)
+                .setDescription(reason == null ? "No reason provided" : reason.getAsString())
                 .setColor(Color.BLUE)
                 .setAuthor(member.getEffectiveName(), null, member.getUser().getEffectiveAvatarUrl())
                 .addField("Tag", traceTicket.traceConfig.tag, true)

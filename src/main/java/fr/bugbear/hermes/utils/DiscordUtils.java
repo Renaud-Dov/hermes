@@ -104,4 +104,15 @@ public class DiscordUtils {
         return Optional.empty();
     }
 
+    public static String maxString(String text, int maxLength, boolean addEllipsis) {
+        if (text.length() <= maxLength) {
+            return text;
+        }
+        return text.substring(0, maxLength - (addEllipsis ? 3 : 0)) + (addEllipsis ? "..." : "");
+    }
+
+    public static String maxString(String text, int maxLength) {
+        return maxString(text, maxLength, true);
+    }
+
 }
