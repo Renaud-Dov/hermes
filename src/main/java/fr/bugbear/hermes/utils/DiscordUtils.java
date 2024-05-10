@@ -62,7 +62,6 @@ public class DiscordUtils {
                 var messageText = message.getContentRaw()
                                          .replaceAll("<@&([0-9]+)>", "`<@&$1>`")
                                          .replaceAll("<@([0-9]+)>", "`<@$1>`");
-                messageText = messageText + messageText;
                 val timestamp = TimeFormat.TIME_LONG.format(message.getTimeCreated());
                 val sizeMessage = messageText.length();
                 thread.sendMessageFormat("%s (%s): %s",
