@@ -137,7 +137,7 @@ public class TraceTicketService implements Logged {
     public boolean canMemberUseTag(Member member, TraceConfigModel tagConfig) {
         return tagConfig.usersAllowed.contains(member.getIdLong()) ||
                tagConfig.rolesAllowed.stream()
-                                     .noneMatch(role -> member.getRoles()
+                                     .anyMatch(role -> member.getRoles()
                                                               .stream()
                                                               .anyMatch(r -> r.getIdLong() == role));
 
