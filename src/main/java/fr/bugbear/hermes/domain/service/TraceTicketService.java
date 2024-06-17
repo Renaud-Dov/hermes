@@ -288,8 +288,17 @@ public class TraceTicketService implements Logged {
         newChannel.sendMessageEmbeds(traceTicketRules())
                   .addContent("%s (login: %s)".formatted(event.getUser().getAsMention(), login))
                   .queue();
-        if (question != null && !question.getAsString().isEmpty())
-            newChannel.sendMessage(question.getAsString()).queue();
+        if (question != null && !question.getAsString().isEmpty()) {
+            val content = question.getAsString();
+            // MAX IS 4000 chars
+            if (content.length() > 2000) {
+                newChannel.sendMessage(content.substring(0, 2000))
+                          .and(newChannel.sendMessage(content.substring(2000)))
+                          .queue();
+            } else {
+                newChannel.sendMessage(content).queue();
+            }
+        }
 
         webhookChannel.sendMessageEmbeds(newTraceTicketLog(traceTicket, newChannel, member, login, question))
                       .addActionRow(Button.link(newChannel.getJumpUrl(), "Go to"))
