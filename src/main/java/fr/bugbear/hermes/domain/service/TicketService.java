@@ -102,6 +102,7 @@ public class TicketService implements Logged {
             return;
         }
         val forum = forumModel.get();
+        logger().info("New ticket in forum {} channel {}", forum.name, threadChannel.getId());
 
         // create a new ticket
         val ticket = new TicketModel()
@@ -168,6 +169,10 @@ public class TicketService implements Logged {
         val newTicketName = getTicketName(ticket.id, nameOption);
         ticket.name = newTicketName;
         threadChannel.getManager().setName(newTicketName).queue();
+        logger().info("Ticket #{} has been renamed to {} by user {}",
+                      ticket.id,
+                      newTicketName,
+                      event.getUser().getId());
 
         event.reply("Ticket renamed from `%s` to `%s`".formatted(threadChannel.getName(), newTicketName))
              .setEphemeral(true)
@@ -204,6 +209,11 @@ public class TicketService implements Logged {
             event.getHook().editOriginal("You are not allowed to close the ticket").queue();
             return;
         }
+        logger().info("User {} is closing the ticket #{} with category {} and reason {}",
+                      member.getId(),
+                      ticket.id,
+                      typeOption,
+                      reasonOption.isEmpty() ? "\"No reason\"" : reasonOption);
         event.getHook().editOriginal("Ticket closed").queue();
         if (typeOption == CloseType.DELETE) {
             // copy all the messages to the webhook channel and delete the ticket
@@ -218,7 +228,6 @@ public class TicketService implements Logged {
                                                                   managerConfig.get().customMessage)
             ).queue();
             threadChannel.getManager().setArchived(true).setLocked(true).reason("Ticket closed").queue();
-
         }
 
         // close the ticket
@@ -260,6 +269,7 @@ public class TicketService implements Logged {
         if (forumService.isNotManager(member, threadChannel.getParentChannel().asForumChannel())) {
             return;
         }
+        logger().info("Registering participation of {} in ticket #{}", member.getId(), ticket.id);
         val now = ZonedDateTime.now();
         if (ticket.takenAt == null) {
             ticket.takenAt = now;
@@ -329,6 +339,7 @@ public class TicketService implements Logged {
         // if the ticket is already closed, we don't need to execute the event again
         if (ticket.status == TicketModel.Status.CLOSED)
             return;
+        logger().info("Ticket channel has been deleted, closing ticket #{}", ticket.id);
         val now = ZonedDateTime.now();
         ticket.status = TicketModel.Status.DELETED;
         ticket.closedAt = now;
@@ -345,6 +356,10 @@ public class TicketService implements Logged {
             return;
         }
         val ticket = ticketModel.get();
+        logger().info("User {} is linking ticket #{} to the thread channel #{}",
+                      event.getUser().getId(),
+                      ticket.id,
+                      event.getChannel().getId());
         event.reply("Ticket %d : https://discord.com/channels/%d/%d".formatted(ticket.id,
                                                                                ticket.guildId,
                                                                                ticket.threadId))
@@ -360,6 +375,7 @@ public class TicketService implements Logged {
         val ticket = ticketModel.get();
         val newName = event.getNewValue();
         if (!Objects.equals("[%d] - %s".formatted(ticket.id, ticket.name), newName)) {
+            logger().info("Ticket #{} name has been changed manually, updating the ticket name", ticket.id);
             val newTicketName = getTicketName(ticket.id, threadChannel.getName());
             ticket.name = newTicketName;
             threadChannel.getManager().setName(newTicketName).queue();
@@ -396,7 +412,7 @@ public class TicketService implements Logged {
         val member = threadChannel.getGuild().retrieveMember(user).complete();
         if (forumService.isManager(member, threadChannel.getParentChannel().asForumChannel()))
             return;
-
+        logger().info("User {} tried to archive or lock the ticket thread #{}", user.getId(), threadChannel.getId());
         if (threadChannel.isArchived() || threadChannel.isLocked()) {
             threadChannel.getManager().setLocked(false).setArchived(false).queue();
             threadChannel.sendMessage(

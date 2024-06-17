@@ -97,8 +97,7 @@ public class ForumService implements Logged {
                                                 .addField("Current title", title, false)
                                                 .build())
                      .queue();
-        logger().info("%s asked for a title change in %d".formatted(event.getUser().getName(),
-                                                                    threadChannel.getIdLong()));
+        logger().info("{} asked for a title change in {}", event.getUser().getName(), threadChannel.getIdLong());
 
     }
 

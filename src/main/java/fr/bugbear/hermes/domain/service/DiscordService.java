@@ -150,12 +150,11 @@ public class DiscordService implements Logged {
 
     public void onCommandAutoComplete(CommandAutoCompleteInteractionEvent event) {
         val commandName = event.getName();
-        logger().info("Command autocomplete : {}", commandName);
         try {
             switch (commandName) {
                 case TRACE -> traceTicketService.traceAutoComplete(event);
                 default -> {
-                    logger().warn("Unknown command : {}", commandName);
+                    logger().warn("Unknown command for autocomplete : {}", commandName);
                     event.replyChoices(List.of()).queue();
                 }
             }

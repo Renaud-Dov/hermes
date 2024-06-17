@@ -138,8 +138,8 @@ public class TraceTicketService implements Logged {
         return tagConfig.usersAllowed.contains(member.getIdLong()) ||
                tagConfig.rolesAllowed.stream()
                                      .anyMatch(role -> member.getRoles()
-                                                              .stream()
-                                                              .anyMatch(r -> r.getIdLong() == role));
+                                                             .stream()
+                                                             .anyMatch(r -> r.getIdLong() == role));
 
     }
 
@@ -218,6 +218,8 @@ public class TraceTicketService implements Logged {
             return;
         }
 
+        logger().info("User {} is creating a trace ticket with tag {}. Sending modal", member.getId(), tagConfig.id);
+
         TextInput login = TextInput.create("login", "Login", TextInputStyle.SHORT)
                                    .setPlaceholder("xavier.login")
                                    .setRequired(true)
@@ -250,6 +252,8 @@ public class TraceTicketService implements Logged {
             return;
         }
         val tagId = hasTagId.get();
+
+        logger().info("Modal interaction event for trace ticket with tag {}", tagId);
 
         val login = requireNonNull(event.getValue("login")).getAsString();
         val tagConfig = traceConfigRepository.findByIdOptional(tagId).orElseThrow();
@@ -326,7 +330,9 @@ public class TraceTicketService implements Logged {
                                                  .formatted(traceTicket.vocalChannelId)).queue();
             return;
         }
-
+        logger().info("User {} created a vocal channel for trace ticket {}",
+                      event.getUser().getId(),
+                      traceTicket.id);
         val vocalChannel = guild.createVoiceChannel("vocal-%s".formatted(channel.getName()),
                                                     channel.getParentCategory()).complete();
         vocalChannel.getManager()
