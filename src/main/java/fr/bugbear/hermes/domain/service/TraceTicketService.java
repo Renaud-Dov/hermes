@@ -65,6 +65,8 @@ public class TraceTicketService implements Logged {
     @Inject TraceTicketRepository traceTicketRepository;
 
     @ConfigProperty(name = "discord.trace.ticket.category.name") String traceTicketCategoryName;
+    @ConfigProperty(name = "discord.trace.form.login.max-size", defaultValue = "50") Integer loginMaxSize;
+    @ConfigProperty(name = "discord.trace.form.login.min-size", defaultValue = "1") Integer loginMinSize;
 
     /**
      * Maximum number of channels that can be created in a category
@@ -223,6 +225,7 @@ public class TraceTicketService implements Logged {
         TextInput login = TextInput.create("login", "Login", TextInputStyle.SHORT)
                                    .setPlaceholder("xavier.login")
                                    .setRequired(true)
+                                   .setRequiredRange(loginMinSize, loginMaxSize)
                                    .build();
 
         TextInput question = TextInput.create("question", "Question", TextInputStyle.PARAGRAPH)
