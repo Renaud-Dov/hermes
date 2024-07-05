@@ -236,7 +236,8 @@ public class TicketService implements Logged {
         ticket.updatedAt = ZonedDateTime.now();
 
         // send message to user that ticket is closed
-        val ticketOwner = requireNonNull(threadChannel.getOwner());
+        val ticketOwner = requireNonNull(threadChannel.getGuild().retrieveMemberById(threadChannel.getOwnerIdLong())
+                                                      .complete());
         ticketOwner.getUser().openPrivateChannel().queue(channel -> {
             val actionRow = new ArrayList<ItemComponent>() {{
                 add(Button.link(threadChannel.getJumpUrl(), "Go to"));
