@@ -37,6 +37,7 @@ import static fr.bugbear.hermes.domain.entity.ButtonEventType.REOPEN_TICKET;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.ASK_TITLE;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.CLOSE;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.CLOSE_TRACE;
+import static fr.bugbear.hermes.domain.entity.CommandsEventType.FE1TIKE;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.GOOGLE;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.LINK;
 import static fr.bugbear.hermes.domain.entity.CommandsEventType.RENAME;
@@ -90,6 +91,9 @@ public class DiscordService implements Logged {
         val askTitle = Commands.slash(ASK_TITLE, "Ask for a title")
                                .setGuildOnly(true);
 
+        val fe1Tike = Commands.slash(FE1TIKE, "Generic messages to ask student to open a ticket")
+                              .setGuildOnly(true);
+
         // global commands
         BotAdapterStarter.client.updateCommands()
                                 .addCommands(closeTicket,
@@ -99,7 +103,8 @@ public class DiscordService implements Logged {
                                              traceTicket,
                                              associateVocalToTrace,
                                              googleCommand,
-                                             askTitle)
+                                             askTitle,
+                                             fe1Tike)
                                 .queue();
 
         logger().info("Global commands registered");
@@ -130,6 +135,7 @@ public class DiscordService implements Logged {
                 case CLOSE_TRACE -> traceTicketService.closeTraceTicket(event);
                 case ASK_TITLE -> forumService.askForTitle(event);
                 case LINK -> ticketService.linkTicket(event);
+                case FE1TIKE -> onFe1Tike(event);
                 default -> {
                     logger().warn("Unknown command : {}", commandName);
                     event.reply("Unknown command, please contact an admin if the issue persists")
@@ -228,5 +234,30 @@ public class DiscordService implements Logged {
                               () -> logger().warn("No user found for the thread update event : {}",
                                                   channelUpdateArchivedEvent.getEntity().getIdLong()));
 
+    }
+
+    public static final List<String> trollMessages = List.of(
+            ":tickets:",
+            ":ticket: :question: :eyes:",
+            "Hey ! Ça te dirait pas de faire un ticket ?",
+            "Looks like a ticket to me.",
+            "Ça sens le ticket, tu devrais en faire un je pense :eyes:",
+            "Opening a ticket is free of charge!"
+    );
+
+    /**
+     * Troll command asked by the assistants
+     *
+     * @param event
+     *         to handle
+     */
+    public void onFe1Tike(SlashCommandInteractionEvent event) {
+        val author = event.getUser();
+
+        event.reply(trollMessages.get((int) (Math.random() * trollMessages.size()))).queue();
+        logger().info("/fe1tike executed by {} in '{}/{}'",
+                      author.getName(),
+                      event.getGuild().getName(),
+                      event.getChannel().getName());
     }
 }

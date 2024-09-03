@@ -22,4 +22,6 @@ public interface CommandsEventType {
     String GOOGLE = "google";
 
     String ASK_TITLE = "ask_title";
+
+    String FE1TIKE = "fe1tike";
 }
