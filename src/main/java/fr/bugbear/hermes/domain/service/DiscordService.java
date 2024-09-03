@@ -253,8 +253,8 @@ public class DiscordService implements Logged {
      */
     public void onFe1Tike(SlashCommandInteractionEvent event) {
         val author = event.getUser();
-
-        event.reply(trollMessages.get((int) (Math.random() * trollMessages.size()))).queue();
+        event.reply("Done!").setEphemeral(true).queue();
+        event.getChannel().sendMessage(trollMessages.get((int) (Math.random() * trollMessages.size()))).queue();
         logger().info("/fe1tike executed by {} in '{}/{}'",
                       author.getName(),
                       event.getGuild().getName(),
