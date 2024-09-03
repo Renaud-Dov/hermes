@@ -16,12 +16,14 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.val;
+import net.dv8tion.jda.api.entities.ISnowflake;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.entities.channel.forums.BaseForumTag;
 import net.dv8tion.jda.api.entities.channel.forums.ForumTag;
+import net.dv8tion.jda.api.entities.channel.forums.ForumTagSnowflake;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateAppliedTagsEvent;
 import net.dv8tion.jda.api.events.channel.update.ChannelUpdateNameEvent;
@@ -90,7 +92,23 @@ public class TicketService implements Logged {
         val practicalTags = forumService.getCurrentPracticalTags(forumChannel);
 
         // add all tags to the thread if they are not already applied
-        // TODO: add practicals tags to the thread
+        val currentTags = threadChannel.getAppliedTags();
+        if (practicalTags.stream()
+                         .map(t -> t.tagId)
+                         .noneMatch(currentTags.stream()
+                                               .map(ISnowflake::getIdLong)
+                                               .collect(Collectors.toSet())::contains)) {
+            val newTags = practicalTags.stream()
+                                       .filter(t -> currentTags.stream().noneMatch(c -> c.getIdLong() == t.tagId))
+                                       .map(t -> ForumTagSnowflake.fromId(t.tagId))
+                                       .toList();
+            logger().info("Adding practical tags to the thread {}", newTags);
+            val tags = new ArrayList<ForumTagSnowflake>();
+            tags.addAll(currentTags);
+            tags.addAll(newTags);
+
+            threadChannel.getManager().setAppliedTags(tags).queue();
+        }
 
     }
 
