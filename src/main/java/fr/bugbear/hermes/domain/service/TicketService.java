@@ -227,12 +227,19 @@ public class TicketService implements Logged {
             event.getHook().editOriginal("You are not allowed to close the ticket").queue();
             return;
         }
+        if (threadChannel.isArchived() || threadChannel.isLocked()) {
+            event.getHook()
+                 .editOriginal(
+                         "You can't close an archived or locked ticket, please reopen it manually before closing it")
+                 .queue();
+            return;
+        }
         logger().info("User {} is closing the ticket #{} with category {} and reason {}",
                       member.getId(),
                       ticket.id,
                       typeOption,
                       reasonOption.isEmpty() ? "\"No reason\"" : reasonOption);
-        event.getHook().editOriginal("Ticket closed").queue();
+        event.getHook().editOriginal("Ticket closed").complete();
         if (typeOption == CloseType.DELETE) {
             // copy all the messages to the webhook channel and delete the ticket
             copyMessagesToLogChannelThenDelete(getAllMessages(threadChannel), webhookChannel, threadChannel.getName(),
