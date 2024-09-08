@@ -236,13 +236,19 @@ public class DiscordService implements Logged {
 
     }
 
-    public static final List<String> trollMessages = List.of(
-            ":tickets:",
+    public static final List<String> TROLL_MESSAGES = List.of(
             ":ticket: :question: :eyes:",
             "Hey ! Ça te dirait pas de faire un ticket ?",
             "Looks like a ticket to me.",
             "Ça sens le ticket, tu devrais en faire un je pense :eyes:",
-            "Opening a ticket is free of charge!"
+            "Opening a ticket is free of charge!",
+            "https://media1.tenor.com/m/ATXV4m_ozekAAAAC/4-square-the-beat-team.gif",
+            "https://media1.tenor.com/m/EuomjPNab8EAAAAC/ticket.gif",
+            "https://media1.tenor.com/m/XVWIZQh1Ge8AAAAC/make-a-ticket-ticket-tool.gif",
+            "https://media1.tenor.com/m/6khicttCKfUAAAAd/ticket-time-boys-locker-room.gif",
+            "https://media1.tenor.com/m/nLj98kCge0cAAAAC/oprah-ticket.gif",
+            "https://media1.tenor.com/m/-T80A11ZMy0AAAAC/police-fun.gif",
+            "https://media1.tenor.com/m/Oo5wci79ZQkAAAAC/file-a-ticket.gif"
     );
 
     /**
@@ -254,7 +260,7 @@ public class DiscordService implements Logged {
     public void onFe1Tike(SlashCommandInteractionEvent event) {
         val author = event.getUser();
         event.reply("Done!").setEphemeral(true).queue();
-        event.getChannel().sendMessage(trollMessages.get((int) (Math.random() * trollMessages.size()))).queue();
+        event.getChannel().sendMessage(TROLL_MESSAGES.get((int) (Math.random() * TROLL_MESSAGES.size()))).queue();
         logger().info("/fe1tike executed by {} in '{}/{}'",
                       author.getName(),
                       event.getGuild().getName(),
