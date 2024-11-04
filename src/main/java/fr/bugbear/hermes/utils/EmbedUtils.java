@@ -60,15 +60,17 @@ public class EmbedUtils {
         };
         String tags = ticket.tags.isEmpty() ? "No tags applied" :
                       String.join("\n", ticket.tags.stream().map("**%s**"::formatted).toList());
-        return new EmbedBuilder()
+        val embed = new EmbedBuilder()
                 .setTitle(ticket.name)
                 .setColor(color)
-                .setAuthor(author.getEffectiveName(), null, author.getEffectiveAvatarUrl())
                 .addField("Status", status, true)
                 .addField("Tags", tags, true)
                 .setTimestamp(ticket.createdAt.toInstant())
-                .setFooter("Thread ID: " + ticket.threadId)
-                .build();
+                .setFooter("Thread ID: " + ticket.threadId);
+        if (author != null) {
+            embed.setAuthor(author.getEffectiveName(), null, author.getUser().getEffectiveAvatarUrl());
+        }
+        return embed.build();
     }
 
     public static MessageEmbed getPrivateCloseTicketMessage(TicketModel ticket,

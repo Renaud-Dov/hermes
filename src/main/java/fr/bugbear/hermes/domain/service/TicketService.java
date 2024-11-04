@@ -53,6 +53,7 @@ import static fr.bugbear.hermes.utils.EmbedUtils.getCloseTicketMessage;
 import static fr.bugbear.hermes.utils.EmbedUtils.getPrivateCloseTicketMessage;
 import static fr.bugbear.hermes.utils.EmbedUtils.getTicketWebhookEmbed;
 import static java.util.Objects.requireNonNull;
+import static net.dv8tion.jda.api.entities.channel.concrete.ForumChannel.MAX_POST_TAGS;
 
 @ApplicationScoped
 public class TicketService implements Logged {
@@ -103,9 +104,11 @@ public class TicketService implements Logged {
                                        .map(t -> ForumTagSnowflake.fromId(t.tagId))
                                        .toList();
             logger().info("Adding practical tags to the thread {}", newTags);
-            val tags = new ArrayList<ForumTagSnowflake>();
+            List<ForumTagSnowflake> tags = new ArrayList<>();
             tags.addAll(currentTags);
             tags.addAll(newTags);
+            if (tags.size() > MAX_POST_TAGS)
+                tags = tags.subList(0, MAX_POST_TAGS);
 
             threadChannel.getManager().setAppliedTags(tags).queue();
         }
@@ -276,7 +279,7 @@ public class TicketService implements Logged {
                                                                    reasonOption))
                    .addActionRow(actionRow)
                    .queue();
-        });
+        }, error -> logger().error("Couldn't send message to user {}", threadChannel.getOwnerIdLong(), error));
         webhookService.editEmbed(ticket, getTicketWebhookEmbed(ticket, ticketOwner)).queue();
     }
 
